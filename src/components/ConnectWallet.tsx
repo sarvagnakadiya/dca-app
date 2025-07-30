@@ -1,4 +1,5 @@
 import React from "react";
+import Image from "next/image";
 import { Button } from "./ui/Button";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
 import { useFrame } from "~/components/providers/FrameProvider";
@@ -12,11 +13,13 @@ const ConnectWallet: React.FC = () => {
 
   return (
     <div className="flex flex-col min-h-screen bg-black">
-      <div className="w-full h-[70vh]">
-        <img
+      <div className="w-full h-[70vh] relative">
+        <Image
           src="/dca-logo.svg"
           alt="DCA Logo"
-          className="w-full h-full object-cover"
+          fill
+          className="object-cover"
+          priority
           draggable={false}
         />
       </div>

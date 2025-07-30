@@ -1,7 +1,11 @@
-import React from "react";
+import React, { useState } from "react";
 import PositionTile from "./ui/PositionTile";
+import { useFrame } from "~/components/providers/FrameProvider";
 
 const Home = () => {
+  const [selectedPeriod, setSelectedPeriod] = useState("7D");
+  const { context } = useFrame();
+
   return (
     <div className="min-h-screen bg-black text-white p-4 font-sans">
       {/* Header */}
@@ -12,23 +16,69 @@ const Home = () => {
             <span className="text-gray-400">💰</span>
             <span>$2,000</span>
           </div>
-          <div className="w-8 h-8 rounded-full bg-gradient-to-r from-pink-400 to-purple-500"></div>
+          {context?.user?.pfpUrl ? (
+            <img
+              src={context.user.pfpUrl}
+              alt="Profile"
+              className="w-8 h-8 rounded-full object-cover"
+            />
+          ) : (
+            <div className="w-8 h-8 rounded-full bg-gradient-to-r from-pink-400 to-purple-500"></div>
+          )}
         </div>
       </div>
 
       {/* Portfolio Balance Section */}
       <div className="mb-8">
-        <div className="text-gray-400 text-sm mb-2">Portfolio balance</div>
-        <div className="text-4xl font-light mb-4">$3,234.43</div>
+        <div className="flex justify-between items-center mb-4">
+          <div>
+            <div className="text-gray-400 text-sm mb-2">Portfolio balance</div>
+            <div className="text-4xl font-light">$3,234.43</div>
+          </div>
 
-        {/* Time Period Selector */}
-        <div className="flex space-x-4 text-sm mb-6">
-          <button className="text-orange-400 border-b border-orange-400 pb-1">
-            7D
-          </button>
-          <button className="text-gray-400 hover:text-white">1M</button>
-          <button className="text-gray-400 hover:text-white">1Y</button>
-          <button className="text-gray-400 hover:text-white">5Y</button>
+          {/* Time Period Selector */}
+          <div className="flex space-x-4 text-sm">
+            <button
+              onClick={() => setSelectedPeriod("7D")}
+              className={`pb-1 ${
+                selectedPeriod === "7D"
+                  ? "text-orange-400 border-b border-orange-400"
+                  : "text-gray-400 hover:text-white"
+              }`}
+            >
+              7D
+            </button>
+            <button
+              onClick={() => setSelectedPeriod("1M")}
+              className={`pb-1 ${
+                selectedPeriod === "1M"
+                  ? "text-orange-400 border-b border-orange-400"
+                  : "text-gray-400 hover:text-white"
+              }`}
+            >
+              1M
+            </button>
+            <button
+              onClick={() => setSelectedPeriod("1Y")}
+              className={`pb-1 ${
+                selectedPeriod === "1Y"
+                  ? "text-orange-400 border-b border-orange-400"
+                  : "text-gray-400 hover:text-white"
+              }`}
+            >
+              1Y
+            </button>
+            <button
+              onClick={() => setSelectedPeriod("5Y")}
+              className={`pb-1 ${
+                selectedPeriod === "5Y"
+                  ? "text-orange-400 border-b border-orange-400"
+                  : "text-gray-400 hover:text-white"
+              }`}
+            >
+              5Y
+            </button>
+          </div>
         </div>
 
         {/* Chart */}
