@@ -18,6 +18,10 @@ interface SetFrequencyPopupProps {
   onConfirm: (amount: number, frequency: string) => void;
   tokenOut: `0x${string}`;
   fid?: number;
+  feeTier: number;
+  initialAmount?: number;
+  initialFrequency?: string;
+  editMode?: boolean;
 }
 
 const USDC_ADDRESS = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
@@ -29,40 +33,22 @@ const publicClient = createPublicClient({
   transport: http(),
 });
 
-// TODO: Temporary function to get the best pool for any token with USDC
-const getBestPool = (tokenAddress: `0x${string}`): { feeTier: number } => {
-  // Static mappings based on the comments in the code
-  const poolMappings: Record<string, { feeTier: number }> = {
-    "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf": {
-      feeTier: 500,
-    },
-    "0xcbD06E5A2B0C65597161de254AA074E489dEb510": {
-      feeTier: 3000,
-    },
-    "0x4200000000000000000000000000000000000006": {
-      feeTier: 3000,
-    },
-  };
-
-  // Return the mapped pool if it exists, otherwise return a default
-  return (
-    poolMappings[tokenAddress.toLowerCase()] || {
-      feeTier: 3000, // Default fee tier
-    }
-  );
-};
-
 export const SetFrequencyPopup: React.FC<SetFrequencyPopupProps> = ({
   open,
   onClose,
   onConfirm,
   tokenOut,
   fid,
+  feeTier,
+  initialAmount = 10,
+  initialFrequency = "Daily",
+  editMode = false,
 }) => {
-  const [amount, setAmount] = useState(10);
-  const [frequency, setFrequency] = useState("Daily");
+  const [amount, setAmount] = useState(initialAmount);
+  const [frequency, setFrequency] = useState(initialFrequency);
   const [isLoading, setIsLoading] = useState(false);
   const [txHash, setTxHash] = useState<`0x${string}` | undefined>();
+  const [amountError, setAmountError] = useState(false);
   const { address } = useAccount();
   const DCA_EXECUTOR_ADDRESS = "0x44E567a0C93F49E503900894ECc508153e6FB77c";
 
@@ -111,17 +97,72 @@ export const SetFrequencyPopup: React.FC<SetFrequencyPopupProps> = ({
 
   const handleConfirm = async () => {
     if (!address) return;
+    if (!amount || amount === 0) {
+      setAmountError(true);
+      return;
+    }
 
     try {
       setIsLoading(true);
+
+      if (editMode) {
+        // Update existing plan
+        console.log("Updating plan frequency...");
+
+        let freqSeconds = 86400;
+        switch (frequency) {
+          case "Hourly":
+            freqSeconds = 3600;
+            break;
+          case "Daily":
+            freqSeconds = 86400;
+            break;
+          case "Weekly":
+            freqSeconds = 604800;
+            break;
+          case "Monthly":
+            freqSeconds = 2592000;
+            break;
+          default:
+            freqSeconds = 86400;
+        }
+
+        console.log("Updating plan frequency...");
+        console.log("freqSeconds", freqSeconds);
+        console.log("fid", fid);
+        console.log("amount", amount);
+        console.log("tokenOut", tokenOut);
+        console.log("address", address);
+
+        const response = await fetch("/api/plan/updateFrequency", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userAddress: address,
+            tokenOutAddress: tokenOut,
+            amountIn: amount * 1_000_000,
+            frequency: freqSeconds,
+            fid: fid,
+          }),
+        });
+
+        const data = await response.json();
+        if (!data.success) {
+          throw new Error(data.error || "Failed to update plan");
+        }
+
+        console.log("Plan updated successfully");
+        onConfirm(amount, frequency);
+        setIsLoading(false);
+        return;
+      }
+
+      // Create new plan (existing logic)
       console.log("Creating plan...");
       console.log("USDC_ADDRESS", USDC_ADDRESS);
       console.log("tokenOut", tokenOut);
       console.log("address", address);
-
-      // Get the best pool for the token pair
-      const bestPool = getBestPool(tokenOut);
-      console.log("Best pool:", bestPool);
+      console.log("feeTier:", feeTier);
 
       const hash = await createPlan({
         address: DCA_EXECUTOR_ADDRESS as `0x${string}`,
@@ -166,7 +207,7 @@ export const SetFrequencyPopup: React.FC<SetFrequencyPopupProps> = ({
           amountIn: amount * 1000000, // Convert to wei for USDC (6 decimals)
           approvalAmount: 0,
           frequency: getDurationInSeconds(frequency),
-          feeTier: bestPool.feeTier, // Use dynamic fee tier from best pool
+          feeTier: feeTier, // Use feeTier from props
           fid: fid,
           planId: planId,
         }),
@@ -190,110 +231,10 @@ export const SetFrequencyPopup: React.FC<SetFrequencyPopupProps> = ({
     }
   };
 
-  // Extract planId from transaction receipt when confirmed
-  // React.useEffect(() => {
-  //   console.log("Main useEffect triggered");
-  //   console.log("isConfirmed:", isConfirmed);
-  //   console.log("receipt:", receipt);
-  //   console.log("txHash:", txHash);
-
-  //   if (isConfirmed && receipt && txHash) {
-  //     console.log("Transaction confirmed, extracting planId from logs...");
-
-  //     // Get the best pool for the token pair
-  //     const bestPool = getBestPool(tokenOut);
-
-  //     // Look for the PlanCreated event
-  //     const planCreatedEvent = receipt.logs.find((log) => {
-  //       // Check if this log is from our DCA contract
-  //       return (
-  //         log.address.toLowerCase() === DCA_EXECUTOR_ADDRESS.toLowerCase() &&
-  //         log.topics[0] ===
-  //           "0x96a20ecfde31e96fea1bd76dd04311297b8590465d3f75c15b07c059ea43e9b5"
-  //       );
-  //     });
-
-  //     if (planCreatedEvent) {
-  //       console.log("Found PlanCreated event:", planCreatedEvent);
-
-  //       // Extract planId from the second topic (index 1)
-  //       // PlanCreated (index_topic_1 address user, index_topic_2 uint256 planId, index_topic_3 address tokenIn, address tokenOut, address recipient)
-  //       const planIdHex = planCreatedEvent.topics[2]; // planId is at index 2 (second indexed parameter)
-  //       const planId = parseInt(planIdHex as `0x${string}`, 16);
-
-  //       console.log("Extracted planId:", planId);
-
-  //       // Call API with the extracted planId
-  //       const callApiWithPlanId = async () => {
-  //         try {
-  //           const response = await fetch("/api/plan/createPlan", {
-  //             method: "POST",
-  //             headers: {
-  //               "Content-Type": "application/json",
-  //             },
-  //             body: JSON.stringify({
-  //               userAddress: address,
-  //               tokenInAddress: USDC_ADDRESS,
-  //               tokenOutAddress: tokenOut,
-  //               recipient: address,
-  //               amountIn: amount * 1000000, // Convert to wei for USDC (6 decimals)
-  //               approvalAmount: 0,
-  //               frequency: getDurationInSeconds(frequency),
-  //               feeTier: bestPool.feeTier, // Use dynamic fee tier from best pool
-  //               fid: fid,
-  //               planId: planId, // Include the extracted planId
-  //               transactionHash: txHash,
-  //             }),
-  //           });
-
-  //           const data = await response.json();
-
-  //           if (!data.success) {
-  //             throw new Error(
-  //               data.error || "Failed to create plan in database"
-  //             );
-  //           }
-
-  //           console.log("Plan created successfully with planId:", planId);
-  //           onConfirm(amount, frequency);
-  //         } catch (error) {
-  //           console.error("Error calling API with planId:", error);
-  //         } finally {
-  //           setIsLoading(false);
-  //         }
-  //       };
-
-  //       callApiWithPlanId();
-  //     } else {
-  //       console.error("PlanCreated event not found in transaction logs");
-  //       console.log("All logs:", receipt.logs);
-  //       setIsLoading(false);
-  //     }
-  //   } else {
-  //     console.log(
-  //       "Condition not met - isConfirmed:",
-  //       isConfirmed,
-  //       "receipt:",
-  //       !!receipt,
-  //       "txHash:",
-  //       !!txHash
-  //     );
-  //   }
-  // }, [
-  //   isConfirmed,
-  //   receipt,
-  //   address,
-  //   tokenOut,
-  //   amount,
-  //   frequency,
-  //   fid,
-  //   onConfirm,
-  // ]);
-
   return (
     <BottomSheetPopup open={open} onClose={onClose}>
       <div className="flex justify-between items-center mb-4">
-        <span className="text-2xl font-semibold">Set frequency</span>
+        <span className="text-2xl font-semibold text-white">Set frequency</span>
         <button className="text-orange-400 text-lg" onClick={onClose}>
           × Close
         </button>
@@ -302,18 +243,30 @@ export const SetFrequencyPopup: React.FC<SetFrequencyPopupProps> = ({
         <label className="block text-gray-400 mb-1">Amount</label>
         <Input
           type="number"
-          value={amount}
+          value={amount === 0 ? (amountError ? "" : "0") : amount}
           min={1}
-          onChange={(e) => setAmount(Number(e.target.value))}
-          className="bg-gray-800 text-white border-none"
+          onChange={(e) => {
+            const val = e.target.value;
+            if (val === "") {
+              setAmount(0);
+              setAmountError(true);
+            } else {
+              const num = Number(val);
+              setAmount(num);
+              setAmountError(num === 0);
+            }
+          }}
+          className={`bg-[#333333] text-white border-2 rounded-md ${
+            amountError ? "border-red-500" : "border-[#333333]"
+          }`}
         />
       </div>
       <div className="grid grid-cols-3 gap-3 mb-6">
         {quickAmounts.map((amt) => (
           <button
             key={amt}
-            className={`py-2 rounded-lg text-lg font-medium transition-colors bg-gray-800 text-white hover:bg-orange-500 hover:text-black ${
-              amount === amt ? "bg-orange-500 text-black" : ""
+            className={`py-2 rounded-2xl text-lg font-medium transition-colors bg-[#333333] text-white hover:bg-orange-500 hover:text-white ${
+              amount === amt ? "bg-orange-500 text-white" : ""
             }`}
             onClick={() => setAmount(amt)}
           >
@@ -326,13 +279,12 @@ export const SetFrequencyPopup: React.FC<SetFrequencyPopupProps> = ({
         <select
           value={frequency}
           onChange={(e) => setFrequency(e.target.value)}
-          className="w-full bg-gray-800 text-white rounded-md px-3 py-2"
+          className="w-full bg-[#333333] text-white border-none rounded-md px-3 py-2"
         >
           <option value="Hourly">Hourly</option>
           <option value="Daily">Daily</option>
           <option value="Weekly">Weekly</option>
           <option value="Monthly">Monthly</option>
-          <option value="Custom">Custom</option>
         </select>
       </div>
       <Button
@@ -340,7 +292,11 @@ export const SetFrequencyPopup: React.FC<SetFrequencyPopupProps> = ({
         onClick={handleConfirm}
         disabled={isLoading}
       >
-        {isLoading ? "Creating Plan..." : "Confirm"}
+        {isLoading
+          ? editMode
+            ? "Updating Plan..."
+            : "Creating Plan..."
+          : "Confirm"}
       </Button>
     </BottomSheetPopup>
   );

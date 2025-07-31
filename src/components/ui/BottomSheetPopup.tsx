@@ -33,7 +33,7 @@ export const BottomSheetPopup: React.FC<BottomSheetPopupProps> = ({
       />
       {/* Bottom Sheet */}
       <div
-        className={`relative w-full max-w-md mx-auto bg-gray-900 rounded-t-2xl shadow-lg p-6 transition-transform duration-300 translate-y-0 ${className}`}
+        className={`relative w-full max-w-md mx-auto bg-[#1F1F1F] rounded-t-2xl shadow-lg p-6 transition-transform duration-300 translate-y-0 ${className}`}
         style={{
           bottom: 0,
           animation: "slideUp 0.3s cubic-bezier(0.4,0,0.2,1)",

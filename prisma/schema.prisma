@@ -16,36 +16,54 @@ model User {
 }
 
 model Token {
-  id              String    @id @default(uuid())
-  address         String    @unique
+  id              String         @id @default(uuid())
+  address         String         @unique
   symbol          String
   name            String
+  decimals        Decimal
+  about           String?
   image           String?
   isWrapped       Boolean
   wrappedName     String?
   wrappedSymbol   String?
   originalAddress String?
-  plansIn         DCAPlan[] @relation("TokenIn")
-  plansOut        DCAPlan[] @relation("TokenOut")
+  feeTier         Int            @default(3000)
+  plansIn         DCAPlan[]      @relation("TokenIn")
+  plansOut        DCAPlan[]      @relation("TokenOut")
+  executions      DCAExecution[]
 }
 
 model DCAPlan {
-  id             String   @id @default(uuid())
+  id             String         @id @default(uuid())
   planId         Int
-  user           User     @relation(fields: [userId], references: [id])
+  user           User           @relation(fields: [userId], references: [id])
   userId         String
-  tokenIn        Token    @relation("TokenIn", fields: [tokenInId], references: [id])
+  tokenIn        Token          @relation("TokenIn", fields: [tokenInId], references: [id])
   tokenInId      String
-  tokenOut       Token    @relation("TokenOut", fields: [tokenOutId], references: [id])
+  tokenOut       Token          @relation("TokenOut", fields: [tokenOutId], references: [id])
   tokenOutId     String
   recipient      String
   amountIn       Decimal
   approvalAmount Decimal
   frequency      Int
-  feeTier        Int
   lastExecutedAt Int
-  active         Boolean  @default(true)
-  createdAt      DateTime @default(now())
+  active         Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  executions     DCAExecution[]
+}
 
-  @@unique([userId, planId])
+model DCAExecution {
+  id     String  @id @default(uuid())
+  plan   DCAPlan @relation(fields: [planId], references: [id])
+  planId String
+
+  amountIn   Decimal // Always USDC (input amount)
+  tokenOut   Token   @relation(fields: [tokenOutId], references: [id])
+  tokenOutId String
+  amountOut  Decimal // How much output token was bought
+  feeAmount  Decimal // How much fee was paid
+
+  priceAtTx  Decimal // Price of tokenOut at time of execution
+  txHash     String   @unique
+  executedAt DateTime @default(now())
 }

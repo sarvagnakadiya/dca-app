@@ -1,6 +1,64 @@
 import { NextResponse } from "next/server";
 import { prisma } from "~/lib/prisma";
 import axios from "axios";
+import { Decimal } from "@prisma/client/runtime/library";
+
+// TypeScript interfaces for database models
+interface DCAExecution {
+  id: string;
+  planId: string;
+  amountIn: Decimal;
+  tokenOutId: string;
+  amountOut: Decimal;
+  feeAmount: Decimal;
+  priceAtTx: Decimal;
+  txHash: string;
+  executedAt: Date;
+}
+
+interface DCAPlan {
+  id: string;
+  planId: number;
+  userId: string;
+  tokenInId: string;
+  tokenOutId: string;
+  recipient: string;
+  amountIn: Decimal;
+  approvalAmount: Decimal;
+  frequency: number;
+  lastExecutedAt: number;
+  active: boolean;
+  createdAt: Date;
+  executions: DCAExecution[];
+}
+
+interface Token {
+  id: string;
+  address: string;
+  symbol: string;
+  name: string;
+  decimals: Decimal;
+  about?: string | null;
+  image?: string | null;
+  isWrapped: boolean;
+  wrappedName?: string | null;
+  wrappedSymbol?: string | null;
+  originalAddress?: string | null;
+  feeTier: number;
+}
+
+interface GeckoTerminalData {
+  name: string;
+  symbol: string;
+  decimals: number;
+  image_url: string;
+  coingecko_coin_id: string;
+  normalized_total_supply: string;
+  price_usd: string;
+  fdv_usd: string;
+  total_reserve_in_usd: string;
+  volume_usd: string;
+}
 
 export async function GET(
   req: Request,
@@ -17,16 +75,6 @@ export async function GET(
     // Find the token in our database
     const token = await prisma.token.findUnique({
       where: { address },
-      include: {
-        plansOut: user
-          ? {
-              where: {
-                active: true,
-                userId: user.id,
-              },
-            }
-          : undefined,
-      },
     });
 
     if (!token) {
@@ -39,14 +87,119 @@ export async function GET(
       );
     }
 
-    // Fetch data from GeckoTerminal API
+    // Get user's plans for this token if user exists (only for calculations)
+    let userPlans: DCAPlan[] = [];
+    if (user) {
+      userPlans = await prisma.dCAPlan.findMany({
+        where: {
+          tokenOutId: token.id,
+          userId: user.id,
+          active: true,
+        },
+        include: {
+          executions: true,
+        },
+      });
+    }
+
+    if (!token) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Token not found",
+        },
+        { status: 404 }
+      );
+    }
+
+    console.log("User plans:", userPlans);
+    console.log("--------------------------------");
+
+    // Fetch data from GeckoTerminal API first
+    let geckoData: GeckoTerminalData | null = null;
+    let currentPrice = 0;
+
     try {
       const response = await axios.get(
         `https://api.geckoterminal.com/api/v2/networks/base/tokens/${address}`
       );
+      geckoData = response.data.data.attributes;
+      currentPrice = parseFloat(geckoData!.price_usd) || 0;
+    } catch (error) {
+      console.error(
+        `Failed to fetch GeckoTerminal data for token ${address}:`,
+        error
+      );
+    }
 
-      const geckoData = response.data.data.attributes;
+    // Calculate investment metrics
+    let totalInvestedValue = 0;
+    let currentValue = 0;
+    let percentChange = 0;
 
+    if (userPlans.length > 0) {
+      // Get all executions for this token from user's plans
+      const allExecutions = userPlans.flatMap(
+        (plan: DCAPlan) => plan.executions
+      );
+
+      if (allExecutions.length > 0) {
+        // Calculate total invested value (sum of all amountIn minus fees in USDC)
+        totalInvestedValue = allExecutions.reduce(
+          (sum: number, execution: DCAExecution) => {
+            const amountIn = Number(execution.amountIn) / 1_000_000; // Convert from USDC decimals (6)
+            const feeAmount = Number(execution.feeAmount) / 1_000_000; // Convert from USDC decimals (6)
+            return sum + (amountIn - feeAmount); // Subtract fees from investment amount
+          },
+          0
+        );
+
+        // Use current price if available, otherwise fallback to last execution price
+        if (currentPrice > 0) {
+          // Calculate current value (sum of all tokenOutAmount * current price)
+          const totalTokenAmount = allExecutions.reduce(
+            (sum: number, execution: DCAExecution) => {
+              return (
+                sum +
+                Number(execution.amountOut) /
+                  Math.pow(10, Number(token.decimals))
+              );
+            },
+            0
+          );
+
+          currentValue = totalTokenAmount * currentPrice;
+
+          // Calculate percent change
+          if (totalInvestedValue > 0) {
+            percentChange =
+              ((currentValue - totalInvestedValue) / totalInvestedValue) * 100;
+          }
+        } else {
+          // Fallback to last execution price
+          const lastExecution = allExecutions[allExecutions.length - 1];
+          currentPrice = Number(lastExecution.priceAtTx);
+          const totalTokenAmount = allExecutions.reduce(
+            (sum: number, execution: DCAExecution) => {
+              return (
+                sum +
+                Number(execution.amountOut) /
+                  Math.pow(10, Number(token.decimals))
+              );
+            },
+            0
+          );
+          currentValue = totalTokenAmount * currentPrice;
+          if (totalInvestedValue > 0) {
+            percentChange =
+              ((currentValue - totalInvestedValue) / totalInvestedValue) * 100;
+          }
+        }
+      }
+    }
+
+    // Return response with or without Gecko data
+    if (geckoData !== null && geckoData !== undefined) {
       return NextResponse.json({
         success: true,
         data: {
@@ -61,19 +214,26 @@ export async function GET(
           fdv_usd: geckoData.fdv_usd,
           total_reserve_in_usd: geckoData.total_reserve_in_usd,
           volume_usd: geckoData.volume_usd,
-          hasActivePlan: token.plansOut?.length > 0,
+          hasActivePlan: userPlans.length > 0,
+          plansOut: userPlans,
+          totalInvestedValue,
+          currentValue,
+          percentChange,
+          currentPrice,
         },
       });
-    } catch (error) {
-      // If GeckoTerminal API call fails, return token without Gecko data
-      console.error(
-        `Failed to fetch GeckoTerminal data for token ${address}:`,
-        error
-      );
+    } else {
+      // Return token without Gecko data
       return NextResponse.json({
         success: true,
         data: {
           ...token,
+          hasActivePlan: userPlans.length > 0,
+          plansOut: userPlans,
+          totalInvestedValue,
+          currentValue,
+          percentChange,
+          currentPrice,
         },
       });
     }

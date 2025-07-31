@@ -1,22 +1,41 @@
 import { NextResponse } from "next/server";
 import { prisma } from "~/lib/prisma";
 
+interface CreateTokenRequest {
+  address: string;
+  symbol: string;
+  name: string;
+  decimals: number;
+  isWrapped: boolean;
+  wrappedName?: string;
+  wrappedSymbol?: string;
+  originalAddress?: string;
+}
+
 export async function POST(req: Request) {
   try {
     const {
       address,
       symbol,
       name,
+      decimals,
       isWrapped,
       wrappedName,
       wrappedSymbol,
       originalAddress,
-    } = await req.json();
+    }: CreateTokenRequest = await req.json();
 
     // Validation
     if (!address) {
       return NextResponse.json(
         { success: false, error: "Token address is required" },
+        { status: 400 }
+      );
+    }
+
+    if (!decimals) {
+      return NextResponse.json(
+        { success: false, error: "Token decimals is required" },
         { status: 400 }
       );
     }
@@ -38,6 +57,7 @@ export async function POST(req: Request) {
         address,
         symbol,
         name,
+        decimals,
         isWrapped,
         wrappedName,
         wrappedSymbol,
