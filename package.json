@@ -12,10 +12,11 @@
   },
   "types": "./index.d.ts",
   "scripts": {
-    "dev": "node scripts/dev.js",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
+  "dev": "node scripts/dev.js",
+  "build": "next build",
+  "postinstall": "prisma generate",
+  "start": "next start",
+  "lint": "next lint",
     "cleanup": "lsof -ti :3000 | xargs kill -9"
   },
   "dependencies": {
