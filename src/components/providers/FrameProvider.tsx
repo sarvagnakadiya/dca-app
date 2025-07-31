@@ -145,10 +145,6 @@ export function useFrame() {
         setLastEvent("Primary button clicked");
       });
 
-      // Call ready action
-      console.log("Calling ready");
-      sdk.actions.ready({});
-
       // Set up MIPD Store
       const store = createStore();
       store.subscribe((providerDetails) => {

@@ -1,0 +1,51 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String    @id @default(uuid())
+  wallet    String    @unique
+  fid       Int?      @unique
+  plans     DCAPlan[]
+  createdAt DateTime  @default(now())
+}
+
+model Token {
+  id              String    @id @default(uuid())
+  address         String    @unique
+  symbol          String
+  name            String
+  image           String?
+  isWrapped       Boolean
+  wrappedName     String?
+  wrappedSymbol   String?
+  originalAddress String?
+  plansIn         DCAPlan[] @relation("TokenIn")
+  plansOut        DCAPlan[] @relation("TokenOut")
+}
+
+model DCAPlan {
+  id             String   @id @default(uuid())
+  planId         Int
+  user           User     @relation(fields: [userId], references: [id])
+  userId         String
+  tokenIn        Token    @relation("TokenIn", fields: [tokenInId], references: [id])
+  tokenInId      String
+  tokenOut       Token    @relation("TokenOut", fields: [tokenOutId], references: [id])
+  tokenOutId     String
+  recipient      String
+  amountIn       Decimal
+  approvalAmount Decimal
+  frequency      Int
+  feeTier        Int
+  lastExecutedAt Int
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  @@unique([userId, planId])
+}

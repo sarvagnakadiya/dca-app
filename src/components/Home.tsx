@@ -1,10 +1,45 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import PositionTile from "./ui/PositionTile";
 import { useFrame } from "~/components/providers/FrameProvider";
+import { useRouter } from "next/navigation";
+import Image from "next/image";
+import sdk from "@farcaster/frame-sdk";
+
+interface Token {
+  id: string;
+  address: string;
+  symbol: string;
+  name: string;
+  image: string;
+  hasActivePlan: boolean;
+}
 
 const Home = () => {
   const [selectedPeriod, setSelectedPeriod] = useState("7D");
+  const [tokens, setTokens] = useState<Token[]>([]);
   const { context } = useFrame();
+  const router = useRouter();
+
+  useEffect(() => {
+    console.log("fetching tokens");
+    console.log("context:::", context);
+    const fetchTokens = async () => {
+      try {
+        const response = await fetch(
+          `/api/plan/getUserPlans/${context?.user?.fid}`
+        );
+        const result = await response.json();
+        if (result.success) {
+          setTokens(result.data);
+          await sdk.actions.ready({});
+        }
+      } catch (error) {
+        console.error("Error fetching tokens:", error);
+      }
+    };
+
+    fetchTokens();
+  }, [context]);
 
   return (
     <div className="min-h-screen bg-black text-white p-4 font-sans">
@@ -12,14 +47,17 @@ const Home = () => {
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-xl font-medium">Home</h1>
         <div className="flex items-center space-x-3">
+          <div>{tokens.length}</div>
           <div className="flex items-center space-x-1 text-sm">
             <span className="text-gray-400">💰</span>
             <span>$2,000</span>
           </div>
           {context?.user?.pfpUrl ? (
-            <img
+            <Image
               src={context.user.pfpUrl}
               alt="Profile"
+              width={32}
+              height={32}
               className="w-8 h-8 rounded-full object-cover"
             />
           ) : (
@@ -163,62 +201,51 @@ const Home = () => {
       <div className="mb-8">
         <h2 className="text-lg font-medium mb-4">DCA Positions</h2>
 
-        <PositionTile
-          icon="₿"
-          iconBgColor="bg-orange-500"
-          name="Bitcoin"
-          currentPrice="$106,093.76"
-          timeInfo="7 years ago"
-          investedAmount="$3,234.43"
-          currentValue="$3,234.43"
-        />
-
-        <PositionTile
-          icon="Ξ"
-          iconBgColor="bg-blue-500"
-          name="Ethereum"
-          currentPrice="$4,000.34"
-          timeInfo="3 years ago"
-          investedAmount="$3,234.43"
-          currentValue="$3,234.43"
-        />
-
-        <PositionTile
-          icon="S"
-          iconBgColor="bg-gradient-to-r from-purple-400 to-pink-400"
-          name="Solana"
-          currentPrice="$4,000.34"
-          timeInfo="1 years ago"
-          investedAmount="$3,234.43"
-          currentValue="$3,234.43"
-        />
+        {tokens
+          .filter((token) => token.hasActivePlan)
+          .map((token) => (
+            <div
+              key={token.id}
+              className="cursor-pointer hover:cursor-pointer transition-all duration-200 hover:opacity-80"
+              onClick={() => router.push(`/token/${token.address}`)}
+            >
+              <PositionTile
+                icon={token.image || token.symbol[0]}
+                iconBgColor="bg-orange-500"
+                name={token.name}
+                currentPrice="$0.00"
+                timeInfo="Just started"
+                investedAmount="$0.00"
+                currentValue="$0.00"
+              />
+            </div>
+          ))}
       </div>
 
       {/* Explore More Tokens */}
       <div>
         <h2 className="text-lg font-medium mb-4">Explore more tokens</h2>
 
-        <PositionTile
-          icon="P"
-          iconBgColor="bg-purple-600"
-          name="Pol"
-          currentPrice="$0.59"
-          timeInfo="1 years ago: $0.01"
-          isExplore={true}
-          ifInvestedAmount="$100"
-          ifCurrentValue="$1,380"
-        />
-
-        <PositionTile
-          icon="P"
-          iconBgColor="bg-purple-600"
-          name="Pol"
-          currentPrice="$0.59"
-          timeInfo="1 years ago: $0.01"
-          isExplore={true}
-          ifInvestedAmount="$100"
-          ifCurrentValue="$1,380"
-        />
+        {tokens
+          .filter((token) => !token.hasActivePlan)
+          .map((token) => (
+            <div
+              key={token.id}
+              className="cursor-pointer hover:cursor-pointer transition-all duration-200 hover:opacity-80"
+              onClick={() => router.push(`/token/${token.address}`)}
+            >
+              <PositionTile
+                icon={token.image}
+                iconBgColor="bg-purple-600"
+                name={token.name}
+                currentPrice="$0.00"
+                timeInfo="Just started"
+                isExplore={true}
+                ifInvestedAmount="$0.00"
+                ifCurrentValue="$0.00"
+              />
+            </div>
+          ))}
       </div>
     </div>
   );
