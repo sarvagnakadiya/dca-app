@@ -7,6 +7,7 @@ import { SetFrequencyPopup } from "~/components/ui/SetFrequencyPopup";
 import { TokenApprovalPopup } from "~/components/ui/TokenApprovalPopup";
 import Image from "next/image";
 import sdk from "@farcaster/frame-sdk";
+import { useAccount } from "wagmi";
 
 interface TokenStats {
   oneYearAgo: number;
@@ -22,8 +23,10 @@ interface Token {
   name: string;
   icon: string;
   price: number;
+  symbol: string;
   stats: TokenStats;
   about: string;
+  hasActivePlan: boolean;
 }
 
 interface TokenApiResponse {
@@ -33,10 +36,26 @@ interface TokenApiResponse {
     address: string;
     symbol: string;
     name: string;
+    image: string;
     isWrapped: boolean;
-    wrappedName: string;
-    wrappedSymbol: string;
-    originalAddress: string;
+    wrappedName: string | null;
+    wrappedSymbol: string | null;
+    originalAddress: string | null;
+    plansOut: Array<{
+      id: string;
+      planId: number;
+      userId: string;
+      tokenInId: string;
+      tokenOutId: string;
+      recipient: string;
+      amountIn: string;
+      approvalAmount: string;
+      frequency: number;
+      feeTier: number;
+      lastExecutedAt: number;
+      active: boolean;
+      createdAt: string;
+    }>;
     cg_name: string;
     cg_symbol: string;
     decimals: number;
@@ -49,15 +68,17 @@ interface TokenApiResponse {
     volume_usd: {
       h24: string;
     };
+    hasActivePlan: boolean;
   };
 }
 
 const TokenPage = () => {
   const [selectedPeriod, setSelectedPeriod] = useState("1h");
-  const { context } = useFrame();
+  const { context, isSDKLoaded } = useFrame();
+  const { address } = useAccount();
   const params = useParams();
   const router = useRouter();
-  const address = params?.address;
+  const tokenAddress = params?.address;
   const [showSetFrequency, setShowSetFrequency] = useState(false);
   const [showTokenApproval, setShowTokenApproval] = useState(false);
 
@@ -69,6 +90,7 @@ const TokenPage = () => {
     name: "",
     icon: "",
     price: 0,
+    symbol: "",
     stats: {
       oneYearAgo: 0,
       invested: 0,
@@ -79,6 +101,7 @@ const TokenPage = () => {
       totalSupply: 0,
     },
     about: "",
+    hasActivePlan: false,
   });
 
   const formatNumber = (num: number): string => {
@@ -106,10 +129,10 @@ const TokenPage = () => {
 
   React.useEffect(() => {
     const fetchTokenData = async () => {
-      if (address) {
+      if (tokenAddress && context?.user?.fid) {
         try {
           const response = await fetch(
-            `/api/plan/getPlan/${address}/${context?.user?.fid}`
+            `/api/plan/getPlan/${tokenAddress}/${context.user.fid}`
           );
           const result: TokenApiResponse = await response.json();
 
@@ -120,6 +143,7 @@ const TokenPage = () => {
               name: tokenData.name,
               icon: tokenData.image_url || "₿", // Fallback to Bitcoin symbol if no image
               price: parseFloat(tokenData.price_usd) || 0,
+              symbol: tokenData.symbol,
               stats: {
                 oneYearAgo: 0, // This data is not available in the API response
                 invested: 100, // This is a static value
@@ -130,6 +154,7 @@ const TokenPage = () => {
                 totalSupply: parseFloat(tokenData.normalized_total_supply) || 0,
               },
               about: `Information about ${tokenData.name} (${tokenData.symbol}) token.`,
+              hasActivePlan: tokenData.hasActivePlan,
             });
             await sdk.actions.ready({});
           }
@@ -140,7 +165,16 @@ const TokenPage = () => {
     };
 
     fetchTokenData();
-  }, [address, context]);
+  }, [tokenAddress, context]);
+
+  // Show loading if SDK is not loaded yet
+  if (!isSDKLoaded) {
+    return (
+      <div className="min-h-screen bg-black text-white p-4 font-sans flex items-center justify-center">
+        Loading...
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-black text-white p-4 font-sans flex flex-col">
@@ -158,7 +192,7 @@ const TokenPage = () => {
               <Image
                 src={token.icon}
                 alt="Token Icon"
-                className="w-8 h-8 rounded-full object-cover border-2 border-gray-700"
+                className="w-8 h-8 rounded-full object-cover border-2 border-orange-700"
                 width={32}
                 height={32}
               />
@@ -222,7 +256,7 @@ const TokenPage = () => {
             width="100%"
             id="geckoterminal-embed"
             title="GeckoTerminal Embed"
-            src={`https://www.geckoterminal.com/base/pools/${address}?embed=1&info=0&swaps=0&grayscale=0&light_chart=0&chart_type=price&resolution=${getResolution(
+            src={`https://www.geckoterminal.com/base/pools/${tokenAddress}?embed=1&info=0&swaps=0&grayscale=0&light_chart=0&chart_type=price&resolution=${getResolution(
               selectedPeriod
             )}`}
             frameBorder="0"
@@ -295,17 +329,29 @@ const TokenPage = () => {
 
       {/* Invest Button */}
       <div className="mt-auto">
+        {!context?.user?.fid ? (
+          <div className="text-center text-gray-400 text-sm mb-4">
+            Loading user information...
+          </div>
+        ) : null}
         <Button
-          className="bg-orange-500 hover:bg-orange-600 text-black text-lg font-semibold py-4 rounded-xl w-full"
+          className="bg-orange-500 hover:bg-orange-600 text-black text-lg font-semibold py-4 rounded-xl w-full disabled:bg-gray-600 disabled:text-gray-400"
           onClick={() => {
-            if (frequencyData) {
+            if (token.hasActivePlan) {
+              setShowTokenApproval(true);
+            } else if (frequencyData) {
               setShowTokenApproval(true);
             } else {
               setShowSetFrequency(true);
             }
           }}
+          disabled={!context?.user?.fid}
         >
-          {frequencyData ? "Approve USDC" : "Invest in Pol"}
+          {token.hasActivePlan
+            ? "Allow more USDC"
+            : frequencyData
+            ? "Approve USDC"
+            : `Invest in ${token.symbol}`}
         </Button>
       </div>
       <SetFrequencyPopup
@@ -314,20 +360,22 @@ const TokenPage = () => {
         onConfirm={(amount, frequency) => {
           setFrequencyData({ amount, frequency });
           setShowSetFrequency(false);
-          setTimeout(() => setShowTokenApproval(true), 200); // slight delay for smooth transition
+          setTimeout(() => setShowTokenApproval(true), 200);
         }}
+        tokenOut={tokenAddress as `0x${string}`}
+        fid={context?.user?.fid}
       />
       <TokenApprovalPopup
         open={showTokenApproval}
         onClose={() => setShowTokenApproval(false)}
         onApprove={(amount) => {
           setShowTokenApproval(false);
-          // console.log("amount", amount);
-          // TODO: Call USDC approval logic here
-          // You can use frequencyData for the previous step's data if available
+          console.log("USDC approval completed for amount:", amount);
         }}
         token="USDC"
         defaultAmount={frequencyData?.amount || 100}
+        tokenOutAddress={tokenAddress as `0x${string}`}
+        fid={context?.user?.fid}
       />
     </div>
   );

@@ -14,6 +14,8 @@ import {
   APP_WEBHOOK_URL,
 } from "./constants";
 import { APP_SPLASH_URL } from "./constants";
+import { createPublicClient, createWalletClient, custom, http } from "viem";
+import { base } from "viem/chains";
 
 interface FrameMetadata {
   version: string;
@@ -157,3 +159,16 @@ export async function getFarcasterMetadata(): Promise<FrameManifest> {
     },
   };
 }
+
+export const publicClient = createPublicClient({
+  chain: base,
+  transport: http(),
+});
+
+export const walletClient =
+  typeof window !== "undefined" && window.ethereum
+    ? createWalletClient({
+        chain: base,
+        transport: custom(window.ethereum),
+      })
+    : null;

@@ -8,37 +8,42 @@ export async function GET(
   try {
     const { fid } = await context.params;
 
-    // First verify if user exists
-    const user = await prisma.user.findUnique({
-      where: { fid: Number(fid) },
-    });
-
     // Get all tokens
     const tokens = await prisma.token.findMany();
 
-    // Get user's active plans if user exists
-    const userPlans = user
-      ? await prisma.dCAPlan.findMany({
-          where: {
-            userId: user.id,
-            active: true,
-          },
-          include: {
-            tokenIn: true,
-            tokenOut: true,
-          },
-        })
-      : [];
+    // Filter out USDC token
+    const filteredTokens = tokens.filter(
+      (token) =>
+        token.address.toLowerCase() !==
+        "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
+    );
+
+    // Get user's active plans by fid
+    const userPlans = await prisma.dCAPlan.findMany({
+      where: {
+        user: {
+          fid: Number(fid),
+        },
+        active: true,
+      },
+      include: {
+        tokenIn: true,
+        tokenOut: true,
+      },
+    });
+
+    console.log("User plans:", userPlans);
+    console.log("--------------------------------");
 
     // Create a map of token addresses to their plan status
     const tokenPlanMap = new Map();
     userPlans.forEach((plan) => {
-      tokenPlanMap.set(plan.tokenIn.address, true);
+      // Mark the token being sold/spent (tokenOut) as having an active plan
       tokenPlanMap.set(plan.tokenOut.address, true);
     });
 
     // Add plan status to tokens
-    const tokensWithUserData = tokens.map((token) => ({
+    const tokensWithUserData = filteredTokens.map((token) => ({
       ...token,
       hasActivePlan: tokenPlanMap.has(token.address) || false,
     }));

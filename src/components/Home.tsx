@@ -17,19 +17,30 @@ interface Token {
 const Home = () => {
   const [selectedPeriod, setSelectedPeriod] = useState("7D");
   const [tokens, setTokens] = useState<Token[]>([]);
-  const { context } = useFrame();
+  const { context, isSDKLoaded } = useFrame();
   const router = useRouter();
 
   useEffect(() => {
     console.log("fetching tokens");
     console.log("context:::", context);
     const fetchTokens = async () => {
+      if (!context?.user?.fid) return;
+
       try {
         const response = await fetch(
-          `/api/plan/getUserPlans/${context?.user?.fid}`
+          `/api/plan/getUserPlans/${context.user.fid}`
         );
         const result = await response.json();
         if (result.success) {
+          console.log("Fetched tokens:", result.data);
+          console.log(
+            "Tokens with active plans:",
+            result.data.filter((token: Token) => token.hasActivePlan)
+          );
+          console.log(
+            "Tokens without active plans:",
+            result.data.filter((token: Token) => !token.hasActivePlan)
+          );
           setTokens(result.data);
           await sdk.actions.ready({});
         }
@@ -40,6 +51,15 @@ const Home = () => {
 
     fetchTokens();
   }, [context]);
+
+  // Show loading if SDK is not loaded yet
+  if (!isSDKLoaded) {
+    return (
+      <div className="min-h-screen bg-black text-white p-4 font-sans flex items-center justify-center">
+        Loading...
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-black text-white p-4 font-sans">
@@ -201,25 +221,32 @@ const Home = () => {
       <div className="mb-8">
         <h2 className="text-lg font-medium mb-4">DCA Positions</h2>
 
-        {tokens
-          .filter((token) => token.hasActivePlan)
-          .map((token) => (
-            <div
-              key={token.id}
-              className="cursor-pointer hover:cursor-pointer transition-all duration-200 hover:opacity-80"
-              onClick={() => router.push(`/token/${token.address}`)}
-            >
-              <PositionTile
-                icon={token.image || token.symbol[0]}
-                iconBgColor="bg-orange-500"
-                name={token.name}
-                currentPrice="$0.00"
-                timeInfo="Just started"
-                investedAmount="$0.00"
-                currentValue="$0.00"
-              />
-            </div>
-          ))}
+        {tokens.filter((token) => token.hasActivePlan).length > 0 ? (
+          tokens
+            .filter((token) => token.hasActivePlan)
+            .map((token) => (
+              <div
+                key={token.id}
+                className="cursor-pointer hover:cursor-pointer transition-all duration-200 hover:opacity-80"
+                onClick={() => router.push(`/token/${token.address}`)}
+              >
+                <PositionTile
+                  icon={token.image || token.symbol[0]}
+                  iconBgColor="bg-orange-500"
+                  name={token.name}
+                  currentPrice="$0.00"
+                  timeInfo="Just started"
+                  investedAmount="$0.00"
+                  currentValue="$0.00"
+                />
+              </div>
+            ))
+        ) : (
+          <div className="text-center py-8 text-gray-400">
+            <p>No active DCA positions yet</p>
+            <p className="text-sm mt-2">Start your first DCA plan below</p>
+          </div>
+        )}
       </div>
 
       {/* Explore More Tokens */}

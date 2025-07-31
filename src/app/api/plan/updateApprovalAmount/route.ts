@@ -3,35 +3,19 @@ import { prisma } from "~/lib/prisma";
 
 export async function POST(req: Request) {
   try {
-    const {
-      userAddress,
-      tokenInAddress,
-      tokenOutAddress,
-      recipient,
-      amountIn,
-      approvalAmount,
-      frequency,
-      feeTier,
-      fid,
-      planId,
-    } = await req.json();
+    const { userAddress, tokenOutAddress, approvalAmount, fid } =
+      await req.json();
 
     // Validation
     const requiredFields = {
       userAddress,
-      tokenInAddress,
       tokenOutAddress,
-      recipient,
-      amountIn,
       approvalAmount,
-      frequency,
-      feeTier,
       fid,
-      planId,
     };
 
     const missingFields = Object.entries(requiredFields)
-      .filter(([value]) => value === undefined || value === null)
+      .filter(([key, value]) => value === undefined || value === null)
       .map(([key]) => key);
 
     if (missingFields.length > 0) {
@@ -45,51 +29,62 @@ export async function POST(req: Request) {
       );
     }
 
-    // Find or create user
-    let user = await prisma.user.findUnique({
+    // Find user
+    const user = await prisma.user.findUnique({
       where: { wallet: userAddress },
     });
 
     if (!user) {
-      // Create new user if doesn't exist
-      user = await prisma.user.create({
-        data: {
-          wallet: userAddress,
-          fid: fid ? Number(fid) : null,
-        },
-      });
-    }
-
-    // Validate tokens exist
-    const [tokenIn, tokenOut] = await Promise.all([
-      prisma.token.findUnique({ where: { address: tokenInAddress } }),
-      prisma.token.findUnique({ where: { address: tokenOutAddress } }),
-    ]);
-
-    console.log(tokenIn, tokenOut);
-
-    if (!tokenIn || !tokenOut) {
       return NextResponse.json(
         {
           success: false,
-          error: "One or both tokens not found",
+          error: "User not found",
         },
         { status: 404 }
       );
     }
 
-    const newPlan = await prisma.dCAPlan.create({
-      data: {
+    // Find the token
+    const tokenOut = await prisma.token.findUnique({
+      where: { address: tokenOutAddress },
+    });
+
+    if (!tokenOut) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Token not found",
+        },
+        { status: 404 }
+      );
+    }
+
+    // Find the existing plan for this user and token pair
+    const existingPlan = await prisma.dCAPlan.findFirst({
+      where: {
         userId: user.id,
-        tokenInId: tokenIn.id,
         tokenOutId: tokenOut.id,
-        recipient,
-        amountIn,
+        active: true,
+      },
+    });
+
+    if (!existingPlan) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "No active plan found for this token pair",
+        },
+        { status: 404 }
+      );
+    }
+
+    // Update the approval amount
+    const updatedPlan = await prisma.dCAPlan.update({
+      where: {
+        id: existingPlan.id,
+      },
+      data: {
         approvalAmount,
-        frequency,
-        planId: Number(planId),
-        feeTier,
-        lastExecutedAt: 0,
       },
       include: {
         user: true,
@@ -101,9 +96,9 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         success: true,
-        data: newPlan,
+        data: updatedPlan,
       },
-      { status: 201 }
+      { status: 200 }
     );
   } catch (error: Error | unknown) {
     const errorMessage =
