@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Button } from "~/components/ui/Button";
 import { useFrame } from "~/components/providers/FrameProvider";
 import { useParams, useRouter } from "next/navigation";
@@ -120,6 +120,9 @@ const TokenPage = () => {
     feeTier: 3000,
   });
 
+  const [isButtonDocked, setIsButtonDocked] = useState(false);
+  const buttonDockRef = useRef<HTMLDivElement>(null);
+
   const formatNumber = (num: number): string => {
     if (num >= 1_000_000_000) return (num / 1_000_000_000).toFixed(2) + "B";
     if (num >= 1_000_000) return (num / 1_000_000).toFixed(2) + "M";
@@ -208,7 +211,7 @@ const TokenPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white p-4 font-sans flex flex-col">
+    <div className="min-h-screen bg-black text-white p-4 font-sans flex flex-col relative">
       {/* Top Bar */}
       <div className="flex justify-between items-center mb-6">
         <div className="flex items-center space-x-4">
@@ -419,32 +422,32 @@ const TokenPage = () => {
         </div>
       </div>
 
-      {/* Invest Button */}
-      <div className="mt-auto">
-        {!context?.user?.fid ? (
-          <div className="text-center text-white text-sm mb-4">
-            Loading user information...
-          </div>
-        ) : null}
-        <Button
-          className="bg-orange-500 hover:bg-orange-600 text-black text-lg font-semibold py-4 rounded-xl w-full disabled:bg-gray-600 disabled:text-white"
-          onClick={() => {
-            if (token.hasActivePlan) {
-              setShowTokenApproval(true);
-            } else if (frequencyData) {
-              setShowTokenApproval(true);
-            } else {
-              setShowSetFrequency(true);
-            }
-          }}
-          disabled={!context?.user?.fid}
-        >
-          {token.hasActivePlan
-            ? "Allow more USDC"
-            : frequencyData
-            ? "Approve USDC"
-            : `Invest in ${token.symbol}`}
-        </Button>
+      {/* Spacer for floating button */}
+      <div className="h-24" />
+
+      {/* Floating Invest Button (always visible) */}
+      <div className="fixed bottom-0 left-0 w-full px-4 pb-4 z-50 pointer-events-none">
+        <div className="pointer-events-auto">
+          <Button
+            className="bg-orange-500 hover:bg-orange-600 text-black text-lg font-semibold py-4 rounded-xl w-full shadow-lg disabled:bg-gray-600 disabled:text-white"
+            onClick={() => {
+              if (token.hasActivePlan) {
+                setShowTokenApproval(true);
+              } else if (frequencyData) {
+                setShowTokenApproval(true);
+              } else {
+                setShowSetFrequency(true);
+              }
+            }}
+            disabled={!context?.user?.fid}
+          >
+            {token.hasActivePlan
+              ? "Allow more USDC"
+              : frequencyData
+              ? "Approve USDC"
+              : `Invest in ${token.symbol}`}
+          </Button>
+        </div>
       </div>
       <SetFrequencyPopup
         open={showSetFrequency}

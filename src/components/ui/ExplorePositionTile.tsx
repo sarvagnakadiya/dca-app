@@ -6,9 +6,9 @@ interface ExplorePositionTileProps {
   iconBgColor: string;
   name: string;
   currentPrice: string;
-  price1YAgo: string; // e.g., "$0.01"
-  ifInvestedAmount: string;
-  ifCurrentValue: string;
+  marketCap: string; // e.g., "$1.2M"
+  volume24h: string;
+  fdv: string;
 }
 
 const ExplorePositionTile: React.FC<ExplorePositionTileProps> = ({
@@ -16,9 +16,9 @@ const ExplorePositionTile: React.FC<ExplorePositionTileProps> = ({
   iconBgColor,
   name,
   currentPrice,
-  price1YAgo,
-  ifInvestedAmount,
-  ifCurrentValue,
+  marketCap,
+  volume24h,
+  fdv,
 }) => (
   <div className="bg-[#1F1F1F] rounded-2xl p-4 mb-2 shadow-lg">
     {/* Header */}
@@ -41,29 +41,29 @@ const ExplorePositionTile: React.FC<ExplorePositionTileProps> = ({
         </div>
         <span className="text-base font-semibold text-white">{name}</span>
         <span className="bg-[#232323] text-white text-xs font-medium rounded-xl px-2 py-0.5 ml-1">
-          {currentPrice}
+          {currentPrice === "NA" ? "NA" : currentPrice}
         </span>
       </div>
       <div className="flex items-center gap-1 text-xs text-gray-300">
-        <span>1Y ago price: {price1YAgo}</span>
+        <span>MC: {marketCap === "NA" ? "NA" : marketCap}</span>
       </div>
     </div>
     <div className="border-t border-dashed border-[#353535] mb-4" />
     <div className="flex justify-between items-end">
       <div>
         <div className="uppercase text-gray-400 text-[6px] tracking-wider mb-0.5">
-          If you invested
+          24h Volume
         </div>
         <div className="text-lg font-bold text-white leading-tight">
-          {ifInvestedAmount}
+          {volume24h === "NA" ? "NA" : volume24h}
         </div>
       </div>
       <div className="text-right">
         <div className="uppercase text-gray-400 text-[6px] tracking-wider mb-0.5">
-          Current value
+          FDV
         </div>
-        <div className="text-lg font-bold text-green-400 leading-tight">
-          {ifCurrentValue}
+        <div className="text-lg font-bold text-blue-400 leading-tight">
+          {fdv === "NA" ? "NA" : fdv}
         </div>
       </div>
     </div>

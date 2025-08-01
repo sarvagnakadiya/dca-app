@@ -5,26 +5,21 @@ import { Decimal } from "@prisma/client/runtime/library";
 
 // TypeScript interfaces for database models
 interface DCAExecution {
-  id: string;
-  planId: string;
+  txHash: string;
+  planHash: string;
   amountIn: Decimal;
-  tokenOutId: string;
+  tokenOutAddress: string;
   amountOut: Decimal;
   feeAmount: Decimal;
-  priceAtTx: Decimal;
-  txHash: string;
   executedAt: Date;
 }
 
 interface DCAPlan {
-  id: string;
-  planId: number;
-  userId: string;
-  tokenInId: string;
-  tokenOutId: string;
+  planHash: string;
+  userWallet: string;
+  tokenOutAddress: string;
   recipient: string;
   amountIn: Decimal;
-  approvalAmount: Decimal;
   frequency: number;
   lastExecutedAt: number;
   active: boolean;
@@ -33,7 +28,6 @@ interface DCAPlan {
 }
 
 interface Token {
-  id: string;
   address: string;
   symbol: string;
   name: string;
@@ -44,7 +38,6 @@ interface Token {
   wrappedName?: string | null;
   wrappedSymbol?: string | null;
   originalAddress?: string | null;
-  feeTier: number;
 }
 
 interface GeckoTerminalData {
@@ -66,6 +59,7 @@ export async function GET(
 ) {
   try {
     const { address, fid } = await context.params;
+    const normalizedAddress = address.toLowerCase();
 
     // Find the user by FID
     const user = await prisma.user.findUnique({
@@ -74,7 +68,7 @@ export async function GET(
 
     // Find the token in our database
     const token = await prisma.token.findUnique({
-      where: { address },
+      where: { address: normalizedAddress },
     });
 
     if (!token) {
@@ -92,24 +86,14 @@ export async function GET(
     if (user) {
       userPlans = await prisma.dCAPlan.findMany({
         where: {
-          tokenOutId: token.id,
-          userId: user.id,
+          tokenOutAddress: normalizedAddress,
+          userWallet: user.wallet,
           active: true,
         },
         include: {
           executions: true,
         },
       });
-    }
-
-    if (!token) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Token not found",
-        },
-        { status: 404 }
-      );
     }
 
     console.log("User plans:", userPlans);
@@ -121,13 +105,13 @@ export async function GET(
 
     try {
       const response = await axios.get(
-        `https://api.geckoterminal.com/api/v2/networks/base/tokens/${address}`
+        `https://api.geckoterminal.com/api/v2/networks/base/tokens/${normalizedAddress}`
       );
       geckoData = response.data.data.attributes;
       currentPrice = parseFloat(geckoData!.price_usd) || 0;
     } catch (error) {
       console.error(
-        `Failed to fetch GeckoTerminal data for token ${address}:`,
+        `Failed to fetch GeckoTerminal data for token ${normalizedAddress}:`,
         error
       );
     }
@@ -176,9 +160,8 @@ export async function GET(
               ((currentValue - totalInvestedValue) / totalInvestedValue) * 100;
           }
         } else {
-          // Fallback to last execution price
-          const lastExecution = allExecutions[allExecutions.length - 1];
-          currentPrice = Number(lastExecution.priceAtTx);
+          // Fallback to last execution price - note: we don't have priceAtTx in new schema
+          // We'll use current price as 0 in this case
           const totalTokenAmount = allExecutions.reduce(
             (sum: number, execution: DCAExecution) => {
               return (

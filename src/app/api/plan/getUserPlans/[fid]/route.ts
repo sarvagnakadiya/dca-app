@@ -5,19 +5,16 @@ import { Decimal } from "@prisma/client/runtime/library";
 
 // TypeScript interfaces for database models
 interface DCAExecution {
-  id: string;
-  planId: string;
+  txHash: string;
+  planHash: string;
   amountIn: Decimal;
-  tokenOutId: string;
+  tokenOutAddress: string;
   amountOut: Decimal;
   feeAmount: Decimal;
-  priceAtTx: Decimal;
-  txHash: string;
   executedAt: Date;
 }
 
 interface Token {
-  id: string;
   address: string;
   symbol: string;
   name: string;
@@ -28,7 +25,6 @@ interface Token {
   wrappedName?: string | null;
   wrappedSymbol?: string | null;
   originalAddress?: string | null;
-  feeTier: number;
 }
 
 export async function GET(
@@ -37,16 +33,63 @@ export async function GET(
 ) {
   try {
     const { fid } = await context.params;
+    console.log("Fetching user plans for FID:", fid);
+
+    // Validate FID
+    if (!fid || isNaN(Number(fid))) {
+      console.error("Invalid FID:", fid);
+      return NextResponse.json(
+        { success: false, error: "Invalid FID provided" },
+        { status: 400 }
+      );
+    }
+
+    // Test database connection
+    try {
+      await prisma.$connect();
+      console.log("Database connected successfully");
+    } catch (dbError) {
+      console.error("Database connection error:", dbError);
+      return NextResponse.json(
+        { success: false, error: "Database connection failed" },
+        { status: 500 }
+      );
+    }
 
     // Get all tokens
     const tokens = await prisma.token.findMany();
+    console.log("Total tokens found:", tokens.length);
+
+    if (tokens.length === 0) {
+      console.log("No tokens found in database, returning empty response");
+      return NextResponse.json({
+        success: true,
+        data: [],
+        portfolio: {
+          portfolioCurrentValue: 0,
+          portfolioInvestedAmount: 0,
+          portfolioPercentChange: 0,
+        },
+      });
+    }
 
     // Filter out USDC token
     const filteredTokens = tokens.filter(
       (token) =>
         token.address.toLowerCase() !==
-        "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
+        (process.env.NEXT_PUBLIC_USDC_ADDRESS as `0x${string}`).toLowerCase()
     );
+    console.log("Filtered tokens (excluding USDC):", filteredTokens.length);
+
+    // Check if user exists
+    const user = await prisma.user.findUnique({
+      where: { fid: Number(fid) },
+    });
+
+    if (!user) {
+      console.log("User not found for FID:", fid);
+      // Return empty response instead of error, as user might not have plans yet
+    }
 
     // Get user's active plans by fid
     const userPlans = await prisma.dCAPlan.findMany({
@@ -57,7 +100,6 @@ export async function GET(
         active: true,
       },
       include: {
-        tokenIn: true,
         tokenOut: true,
         executions: true,
       },
@@ -70,6 +112,12 @@ export async function GET(
     const tokenPlanMap = new Map();
     const tokenExecutionMap = new Map();
     const tokenPlanCreatedAtMap = new Map();
+
+    if (userPlans.length === 0) {
+      console.log(
+        "No user plans found, returning all tokens without active plans"
+      );
+    }
 
     userPlans.forEach((plan) => {
       // Mark the token being sold/spent (tokenOut) as having an active plan
@@ -100,23 +148,40 @@ export async function GET(
         let percentChange = 0;
         let currentPrice = 0;
 
-        // Get current token price for all tokens
+        // Get current token price and additional metrics for all tokens
+        let fdvUsd = 0;
+        let totalReserveInUsd = 0;
+        let volume24h = 0;
+        let marketCapUsd = 0;
+
         try {
           const response = await axios.get(
-            `https://api.geckoterminal.com/api/v2/networks/base/tokens/${token.address}`
+            `https://api.geckoterminal.com/api/v2/networks/base/tokens/${token.address}`,
+            { timeout: 5000 } // Add timeout to prevent hanging requests
           );
-          currentPrice =
-            parseFloat(response.data.data.attributes.price_usd) || 0;
+
+          if (response.data?.data?.attributes) {
+            const attributes = response.data.data.attributes;
+            currentPrice = parseFloat(attributes.price_usd) || 0;
+            fdvUsd = parseFloat(attributes.fdv_usd) || 0;
+            totalReserveInUsd =
+              parseFloat(attributes.total_reserve_in_usd) || 0;
+            volume24h = parseFloat(attributes.volume_usd?.h24) || 0;
+            marketCapUsd = parseFloat(attributes.market_cap_usd) || 0;
+
+            console.log(
+              `Metrics for ${token.symbol}: Price: $${currentPrice}, FDV: $${fdvUsd}, Volume: $${volume24h}`
+            );
+          } else {
+            console.log(`No data for ${token.symbol}`);
+            currentPrice = 0;
+          }
         } catch (error) {
           console.error(
-            `Failed to fetch price for token ${token.address}:`,
+            `Failed to fetch data for token ${token.address} (${token.symbol}):`,
             error
           );
-          // If price fetch fails and we have executions, use the last execution price as fallback
-          if (executions.length > 0) {
-            const lastExecution = executions[executions.length - 1];
-            currentPrice = Number(lastExecution.priceAtTx);
-          }
+          currentPrice = 0;
         }
 
         // Calculate investment metrics only if there are executions
@@ -137,7 +202,7 @@ export async function GET(
               return (
                 sum +
                 Number(execution.amountOut) /
-                  Math.pow(10, Number(token.decimals))
+                  Math.pow(10, Number(token.decimals.toString()))
               );
             },
             0
@@ -153,25 +218,41 @@ export async function GET(
         }
 
         return {
-          ...token,
+          id: token.address, // Add id field that Home component expects
+          address: token.address,
+          symbol: token.symbol,
+          name: token.name,
+          about: token.about,
+          decimals: token.decimals.toString(), // Convert Decimal to string
+          image: token.image,
+          isWrapped: token.isWrapped,
+          wrappedName: token.wrappedName,
+          wrappedSymbol: token.wrappedSymbol,
+          originalAddress: token.originalAddress,
+          feeTier: 0, // Add default feeTier
           hasActivePlan: tokenPlanMap.has(token.address) || false,
-          planCreatedAt: tokenPlanCreatedAtMap.get(token.address) || null,
+          planCreatedAt:
+            tokenPlanCreatedAtMap.get(token.address)?.toISOString() || null,
           totalInvestedValue,
           currentValue,
           percentChange,
           currentPrice,
+          fdvUsd,
+          totalReserveInUsd,
+          volume24h,
+          marketCapUsd,
         };
       })
     );
 
     // Calculate portfolio-level metrics
     const portfolioCurrentValue = tokensWithUserData.reduce(
-      (sum, token) => sum + token.currentValue,
+      (sum, token) => sum + (token.currentValue || 0),
       0
     );
 
     const portfolioInvestedAmount = tokensWithUserData.reduce(
-      (sum, token) => sum + token.totalInvestedValue,
+      (sum, token) => sum + (token.totalInvestedValue || 0),
       0
     );
 
@@ -182,7 +263,25 @@ export async function GET(
           100
         : 0;
 
-    return NextResponse.json({
+    console.log("Portfolio calculation:", {
+      tokensCount: tokensWithUserData.length,
+      portfolioCurrentValue,
+      portfolioInvestedAmount,
+      portfolioPercentChange,
+    });
+
+    console.log(
+      "Final response - tokens with user data:",
+      tokensWithUserData.length
+    );
+    console.log("Portfolio metrics:", {
+      portfolioCurrentValue,
+      portfolioInvestedAmount,
+      portfolioPercentChange,
+    });
+
+    // Validate response structure
+    const response = {
       success: true,
       data: tokensWithUserData,
       portfolio: {
@@ -190,8 +289,18 @@ export async function GET(
         portfolioInvestedAmount,
         portfolioPercentChange,
       },
+    };
+
+    console.log("Response structure validation:", {
+      hasSuccess: "success" in response,
+      hasData: "data" in response,
+      hasPortfolio: "portfolio" in response,
+      dataLength: response.data.length,
     });
-  } catch (error: Error | unknown) {
+
+    return NextResponse.json(response);
+  } catch (error) {
+    console.error("Error in getUserPlans API:", error);
     const errorMessage =
       error instanceof Error ? error.message : "An unknown error occurred";
     return NextResponse.json(

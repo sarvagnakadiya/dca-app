@@ -3,11 +3,6 @@ export const DCA_ABI = [
     inputs: [
       {
         internalType: "address",
-        name: "_tokenIn",
-        type: "address",
-      },
-      {
-        internalType: "address",
         name: "_tokenOut",
         type: "address",
       },

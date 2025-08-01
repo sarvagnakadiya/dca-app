@@ -49,8 +49,8 @@ export async function POST(req: Request) {
     // Find the existing active plan
     const existingPlan = await prisma.dCAPlan.findFirst({
       where: {
-        userId: user.id,
-        tokenOutId: tokenOut.id,
+        userWallet: user.wallet,
+        tokenOutAddress: tokenOut.address,
         active: true,
       },
     });
@@ -63,9 +63,9 @@ export async function POST(req: Request) {
 
     // Update amountIn and frequency
     const updatedPlan = await prisma.dCAPlan.update({
-      where: { id: existingPlan.id },
+      where: { planHash: existingPlan.planHash },
       data: { amountIn, frequency },
-      include: { user: true, tokenIn: true, tokenOut: true },
+      include: { user: true, tokenOut: true },
     });
 
     return NextResponse.json(

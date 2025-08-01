@@ -1,39 +1,20 @@
-import { ImageResponse } from "next/og";
-import { NextRequest } from "next/server";
-import { getNeynarUser } from "~/lib/neynar";
+import { NextResponse } from "next/server";
+import { join } from "path";
+import { promises as fs } from "fs";
 
-export const dynamic = "force-dynamic";
-
-export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const fid = searchParams.get("fid");
-
-  const user = fid ? await getNeynarUser(Number(fid)) : null;
-
-  return new ImageResponse(
-    (
-      <div tw="flex h-full w-full flex-col justify-center items-center relative bg-purple-600">
-        {user?.pfp_url && (
-          <div tw="flex w-96 h-96 rounded-full overflow-hidden mb-8 border-8 border-white">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={user.pfp_url}
-              alt="Profile"
-              tw="w-full h-full object-cover"
-            />
-          </div>
-        )}
-        <h1 tw="text-8xl text-white">
-          {user?.display_name
-            ? `Hello from ${user.display_name ?? user.username}!`
-            : "Hello!"}
-        </h1>
-        <p tw="text-5xl mt-4 text-white opacity-80">Powered by Neynar 🪐</p>
-      </div>
-    ),
-    {
-      width: 1200,
-      height: 800,
-    }
-  );
+export async function GET() {
+  // Path to the frame.png in the public directory
+  const imagePath = join(process.cwd(), "public", "frame.png");
+  try {
+    const imageBuffer = await fs.readFile(imagePath);
+    return new NextResponse(imageBuffer, {
+      status: 200,
+      headers: {
+        "Content-Type": "image/png",
+        "Cache-Control": "public, max-age=31536000, immutable",
+      },
+    });
+  } catch (error) {
+    return new NextResponse("Image not found", { status: 404 });
+  }
 }

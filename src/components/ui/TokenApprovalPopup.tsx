@@ -15,8 +15,9 @@ interface TokenApprovalPopupProps {
   fid?: number;
 }
 
-const USDC_ADDRESS = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
-const DCA_EXECUTOR_ADDRESS = "0x44E567a0C93F49E503900894ECc508153e6FB77c";
+const USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_ADDRESS as `0x${string}`;
+const DCA_EXECUTOR_ADDRESS = process.env
+  .NEXT_PUBLIC_DCA_EXECUTOR_ADDRESS as `0x${string}`;
 const quickAmounts = [5, 10, 50, 100, 500, 1000];
 
 export const TokenApprovalPopup: React.FC<TokenApprovalPopupProps> = ({
@@ -110,9 +111,11 @@ export const TokenApprovalPopup: React.FC<TokenApprovalPopupProps> = ({
           </button>
         ))}
       </div>
-      {currentAllowance && currentAllowance > 0n && (
+      {currentAllowance !== undefined && (
         <div className="mb-4 p-3 bg-blue-900/20 border border-blue-500/30 rounded-lg text-blue-300 text-sm">
-          Current allowance: {Number(currentAllowance) / 1000000} USDC
+          Current allowance:{" "}
+          {currentAllowance === 0n ? "0" : Number(currentAllowance) / 1000000}{" "}
+          USDC
         </div>
       )}
       <div className="mb-4 p-3 bg-[#333333] rounded-lg text-gray-300 text-sm">
