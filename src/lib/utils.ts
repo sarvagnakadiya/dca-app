@@ -172,3 +172,61 @@ export const walletClient =
         transport: custom(window.ethereum),
       })
     : null;
+
+export async function executeInitialInvestment(
+  planHash: string
+): Promise<{ success: boolean; txHash?: string; error?: string }> {
+  try {
+    const response = await fetch(`/api/invest/${planHash}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    const data = await response.json();
+
+    if (!data.success) {
+      // Provide more specific error messages based on the response
+      let errorMessage = data.error || "Failed to execute initial investment";
+
+      // Check for database connection errors
+      if (data.error && data.error.includes("Can't reach database server")) {
+        errorMessage =
+          "Database connection failed. Please try again in a few moments.";
+      } else if (
+        data.error &&
+        data.error.includes("Database connection failed")
+      ) {
+        errorMessage =
+          "Database connection failed. Please try again in a few moments.";
+      } else if (response.status === 503) {
+        errorMessage =
+          "Service temporarily unavailable. Please try again in a few moments.";
+      }
+
+      return {
+        success: false,
+        error: errorMessage,
+      };
+    }
+
+    return { success: true, txHash: data.txHash };
+  } catch (error) {
+    console.error("Error executing initial investment:", error);
+
+    // Provide more specific error messages for network errors
+    if (error instanceof TypeError && error.message.includes("fetch")) {
+      return {
+        success: false,
+        error:
+          "Network connection failed. Please check your internet connection.",
+      };
+    }
+
+    return {
+      success: false,
+      error: "Network error occurred. Please try again.",
+    };
+  }
+}

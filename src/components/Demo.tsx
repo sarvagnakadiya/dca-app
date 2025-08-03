@@ -3,9 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Input } from "../components/ui/input";
 import { signIn, signOut, getCsrfToken } from "next-auth/react";
-import sdk, {
-  SignIn as SignInCore,
-} from "@farcaster/frame-sdk";
+import sdk, { SignIn as SignInCore } from "@farcaster/frame-sdk";
 import {
   useAccount,
   useSendTransaction,
@@ -25,12 +23,22 @@ import { base, degen, mainnet, optimism, unichain } from "wagmi/chains";
 import { BaseError, UserRejectedRequestError } from "viem";
 import { useSession } from "next-auth/react";
 import { Label } from "~/components/ui/label";
-import { useFrame } from "~/components/providers/FrameProvider";
+import { useMiniApp } from "~/components/providers/FrameProvider";
 
 export default function Demo(
   { title }: { title?: string } = { title: "Frames v2 Demo" }
 ) {
-  const { isSDKLoaded, context, added, notificationDetails, lastEvent, addFrame, addFrameResult, openUrl, close } = useFrame();
+  const {
+    isSDKLoaded,
+    context,
+    added,
+    notificationDetails,
+    lastEvent,
+    addFrame,
+    addFrameResult,
+    openUrl,
+    close,
+  } = useMiniApp();
   const [isContextOpen, setIsContextOpen] = useState(false);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [sendNotificationResult, setSendNotificationResult] = useState("");
@@ -221,7 +229,13 @@ export default function Demo(
                 sdk.actions.openUrl
               </pre>
             </div>
-            <Button onClick={() => openUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ")}>Open Link</Button>
+            <Button
+              onClick={() =>
+                openUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+              }
+            >
+              Open Link
+            </Button>
           </div>
 
           <div className="mb-4">
@@ -292,7 +306,7 @@ export default function Demo(
           </div>
 
           <div className="mb-4">
-            <Button 
+            <Button
               onClick={async () => {
                 if (context?.user?.fid) {
                   const shareUrl = `${process.env.NEXT_PUBLIC_URL}/share/${context.user.fid}`;
@@ -325,10 +339,7 @@ export default function Demo(
 
           <div className="mb-4">
             {isConnected ? (
-              <Button
-                onClick={() => disconnect()}
-                className="w-full"
-              >
+              <Button onClick={() => disconnect()} className="w-full">
                 Disconnect
               </Button>
             ) : context ? (
@@ -650,4 +661,3 @@ const renderError = (error: Error | null) => {
 
   return <div className="text-red-500 text-xs mt-1">{error.message}</div>;
 };
-

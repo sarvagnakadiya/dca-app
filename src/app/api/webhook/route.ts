@@ -2,7 +2,7 @@ import {
   ParseWebhookEvent,
   parseWebhookEvent,
   verifyAppKeyWithNeynar,
-} from "@farcaster/frame-node";
+} from "@farcaster/miniapp-node";
 import { NextRequest } from "next/server";
 import {
   deleteUserNotificationDetails,
@@ -13,7 +13,8 @@ import { sendFrameNotification } from "~/lib/notifs";
 export async function POST(request: NextRequest) {
   // If Neynar is enabled, we don't need to handle webhooks here
   // as they will be handled by Neynar's webhook endpoint
-  const neynarEnabled = process.env.NEYNAR_API_KEY && process.env.NEYNAR_CLIENT_ID;
+  const neynarEnabled =
+    process.env.NEYNAR_API_KEY && process.env.NEYNAR_CLIENT_ID;
   if (neynarEnabled) {
     return Response.json({ success: true });
   }

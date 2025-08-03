@@ -1,14 +1,15 @@
 "use client";
 import React, { useState, useRef, useEffect } from "react";
 import { Button } from "~/components/ui/Button";
-import { useFrame } from "~/components/providers/FrameProvider";
+import { useMiniApp } from "~/components/providers/FrameProvider";
 import { useParams, useRouter } from "next/navigation";
 import { SetFrequencyPopup } from "~/components/ui/SetFrequencyPopup";
 import { TokenApprovalPopup } from "~/components/ui/TokenApprovalPopup";
 import { BalanceDisplay } from "~/components/ui/BalanceDisplay";
 import Image from "next/image";
 import sdk from "@farcaster/frame-sdk";
-import { useAccount } from "wagmi";
+import { useAccount, useWriteContract } from "wagmi";
+import DCA_ABI from "~/lib/contracts/DCAForwarder.json";
 
 interface TokenStats {
   oneYearAgo: number;
@@ -85,7 +86,7 @@ interface TokenApiResponse {
 
 const TokenPage = () => {
   const [selectedPeriod, setSelectedPeriod] = useState("1h");
-  const { context, isSDKLoaded } = useFrame();
+  const { context, isSDKLoaded } = useMiniApp();
   const { address } = useAccount();
   const params = useParams();
   const router = useRouter();
@@ -95,10 +96,18 @@ const TokenPage = () => {
   const [showEditFrequency, setShowEditFrequency] = useState(false);
   const [activePlan, setActivePlan] = useState<Plan | null>(null);
 
+  // New state for foldable sections
+  const [isAboutExpanded, setIsAboutExpanded] = useState(false);
+  const [isFrequencyExpanded, setIsFrequencyExpanded] = useState(false);
+  const [isCancellingPlan, setIsCancellingPlan] = useState(false);
+
   const [frequencyData, setFrequencyData] = useState<{
     amount: number;
     frequency: string;
   } | null>(null);
+  const [pendingPlanHash, setPendingPlanHash] = useState<string | undefined>(
+    undefined
+  );
   const [token, setToken] = useState<Token>({
     name: "",
     icon: "",
@@ -122,6 +131,81 @@ const TokenPage = () => {
 
   const [isButtonDocked, setIsButtonDocked] = useState(false);
   const buttonDockRef = useRef<HTMLDivElement>(null);
+
+  // Contract interaction for canceling plan
+  const { writeContractAsync: cancelPlan, isPending: isCancelling } =
+    useWriteContract();
+  const DCA_EXECUTOR_ADDRESS = process.env
+    .NEXT_PUBLIC_DCA_EXECUTOR_ADDRESS as `0x${string}`;
+
+  const handleCancelPlan = async () => {
+    if (!address || !tokenAddress) return;
+
+    try {
+      setIsCancellingPlan(true);
+
+      const hash = await cancelPlan({
+        address: DCA_EXECUTOR_ADDRESS,
+        abi: DCA_ABI.abi,
+        functionName: "cancelPlan",
+        args: [tokenAddress as `0x${string}`],
+      });
+
+      console.log("Plan cancellation transaction hash:", hash);
+
+      // Also delete the plan from the database
+      if (context?.user?.fid) {
+        try {
+          const deleteResponse = await fetch("/api/plan/deletePlan", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              userAddress: address,
+              tokenOutAddress: tokenAddress,
+              fid: context.user.fid,
+            }),
+          });
+
+          const deleteResult = await deleteResponse.json();
+          if (deleteResult.success) {
+            console.log("Plan deleted from database successfully");
+          } else {
+            console.error(
+              "Failed to delete plan from database:",
+              deleteResult.error
+            );
+          }
+        } catch (dbError) {
+          console.error("Error calling deletePlan API:", dbError);
+        }
+      }
+
+      // Refetch plan data after cancellation
+      if (context?.user?.fid) {
+        const response = await fetch(
+          `/api/plan/getPlan/${tokenAddress}/${context.user.fid}`
+        );
+        const result: TokenApiResponse = await response.json();
+        if (result.success) {
+          setToken((prev) => ({
+            ...prev,
+            hasActivePlan: result.data.hasActivePlan,
+          }));
+          if (result.data.plansOut && result.data.plansOut.length > 0) {
+            setActivePlan(result.data.plansOut[0]);
+          } else {
+            setActivePlan(null);
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error cancelling plan:", error);
+    } finally {
+      setIsCancellingPlan(false);
+    }
+  };
 
   const formatNumber = (num: number): string => {
     if (num >= 1_000_000_000) return (num / 1_000_000_000).toFixed(2) + "B";
@@ -363,11 +447,35 @@ const TokenPage = () => {
         </div>
       </div>
 
-      {/* Frequency Bubble (if active plan) */}
+      {/* Frequency Bubble (if active plan) - Now foldable */}
       {token.hasActivePlan && activePlan && (
-        <div className="bg-[#131313] rounded-xl p-4 mb-6 flex flex-col gap-2">
+        <div className="bg-[#131313] rounded-xl p-4 mb-6">
           <div className="flex justify-between items-center mb-2">
-            <span className="text-lg font-medium">Frequency</span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsFrequencyExpanded(!isFrequencyExpanded)}
+                className="text-white hover:text-gray-300 transition-colors"
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  className={`transform transition-transform ${
+                    isFrequencyExpanded ? "rotate-180" : ""
+                  }`}
+                >
+                  <path
+                    d="M6 9l6 6 6-6"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+              <span className="text-lg font-medium">Frequency</span>
+            </div>
             <button
               className="text-orange-400 text-base flex items-center gap-1 hover:underline"
               onClick={() => setShowEditFrequency(true)}
@@ -384,6 +492,8 @@ const TokenPage = () => {
               Edit
             </button>
           </div>
+
+          {/* Always show amount and frequency */}
           <div className="bg-[#1E1E1F] rounded-lg p-4 flex flex-col gap-2">
             <div className="flex justify-between items-center">
               <span className="text-gray-400">Amount</span>
@@ -405,20 +515,80 @@ const TokenPage = () => {
                     case 2592000:
                       return "Monthly";
                     default:
-                      return `${activePlan.frequency / 3600}h`;
+                      // Handle minute-based frequencies
+                      if (activePlan.frequency < 3600) {
+                        return `${activePlan.frequency / 60} minutes`;
+                      } else {
+                        return `${activePlan.frequency / 3600}h`;
+                      }
                   }
                 })()}
               </span>
             </div>
           </div>
+
+          {/* Only show danger zone when expanded */}
+          {isFrequencyExpanded && (
+            <div className="mt-4">
+              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
+                <div className="text-red-400 text-sm mb-2">Danger Zone</div>
+                <div className="text-gray-300 text-sm mb-3">
+                  This will permanently stop your DCA position. You&apos;ll keep
+                  any tokens you&apos;ve already purchased.
+                </div>
+                <Button
+                  className="bg-red-500 hover:bg-red-600 text-white text-sm font-medium py-2 px-4 rounded-lg w-full disabled:bg-gray-600 disabled:text-white"
+                  onClick={handleCancelPlan}
+                  disabled={isCancelling || isCancellingPlan}
+                >
+                  {isCancelling || isCancellingPlan
+                    ? "Cancelling..."
+                    : "Stop Position"}
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* About Section */}
+      {/* About Section - Now foldable */}
       <div className="bg-[#131313] rounded-xl p-6 mb-6">
-        <div className="text-lg font-medium mb-2">About</div>
+        <div className="flex items-center gap-2 mb-2">
+          <button
+            onClick={() => setIsAboutExpanded(!isAboutExpanded)}
+            className="text-white hover:text-gray-300 transition-colors"
+          >
+            <svg
+              width="16"
+              height="16"
+              fill="none"
+              viewBox="0 0 24 24"
+              className={`transform transition-transform ${
+                isAboutExpanded ? "rotate-180" : ""
+              }`}
+            >
+              <path
+                d="M6 9l6 6 6-6"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+          <div className="text-lg font-medium">About</div>
+        </div>
+
         <div className="text-gray-300 text-sm leading-relaxed">
-          {token.about}
+          {isAboutExpanded ? (
+            token.about
+          ) : (
+            <div>
+              {token.about.length > 150
+                ? `${token.about.substring(0, 150)}...`
+                : token.about}
+            </div>
+          )}
         </div>
       </div>
 
@@ -452,8 +622,9 @@ const TokenPage = () => {
       <SetFrequencyPopup
         open={showSetFrequency}
         onClose={() => setShowSetFrequency(false)}
-        onConfirm={(amount, frequency) => {
+        onConfirm={(amount, frequency, planHash) => {
           setFrequencyData({ amount, frequency });
+          setPendingPlanHash(planHash);
           setShowSetFrequency(false);
           setTimeout(() => setShowTokenApproval(true), 200);
         }}
@@ -466,18 +637,20 @@ const TokenPage = () => {
         onClose={() => setShowTokenApproval(false)}
         onApprove={(amount) => {
           setShowTokenApproval(false);
+          setPendingPlanHash(undefined); // Clear the pending plan hash
           console.log("USDC approval completed for amount:", amount);
         }}
         token="USDC"
         defaultAmount={frequencyData?.amount || 100}
         tokenOutAddress={tokenAddress as `0x${string}`}
         fid={context?.user?.fid}
+        planHash={pendingPlanHash}
       />
       {/* Edit Frequency Popup (reusing SetFrequencyPopup) */}
       <SetFrequencyPopup
         open={showEditFrequency}
         onClose={() => setShowEditFrequency(false)}
-        onConfirm={async (amount, frequency) => {
+        onConfirm={async (amount, frequency, planHash) => {
           setShowEditFrequency(false);
           // Refetch plan data
           if (context?.user?.fid) {
@@ -513,7 +686,12 @@ const TokenPage = () => {
             case 2592000:
               return "Monthly";
             default:
-              return "Daily";
+              // Handle minute-based frequencies
+              if (activePlan.frequency < 3600) {
+                return `${activePlan.frequency / 60} minutes`;
+              } else {
+                return "Daily"; // fallback for unknown frequencies
+              }
           }
         })()}
         editMode={true}

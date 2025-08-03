@@ -2,14 +2,14 @@ import React from "react";
 import Image from "next/image";
 import { Button } from "./ui/Button";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
-import { useFrame } from "~/components/providers/FrameProvider";
+import { useMiniApp } from "~/components/providers/FrameProvider";
 import { truncateAddress } from "~/lib/truncateAddress";
 
 const ConnectWallet: React.FC = () => {
   const { address, isConnected } = useAccount();
   const { connect, connectors } = useConnect();
   const { disconnect } = useDisconnect();
-  const { context } = useFrame();
+  const { context } = useMiniApp();
 
   return (
     <div className="flex flex-col min-h-screen bg-black">

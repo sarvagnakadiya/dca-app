@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import sdk, {
   type Context,
-  type FrameNotificationDetails,
+  type MiniAppNotificationDetails,
   AddMiniApp,
 } from "@farcaster/frame-sdk";
 import { createStore } from "mipd";
@@ -12,26 +12,26 @@ import { logEvent } from "../../lib/amplitude";
 
 interface FrameContextType {
   isSDKLoaded: boolean;
-  context: Context.FrameContext | undefined;
+  context: Context.MiniAppContext | undefined;
   openUrl: (url: string) => Promise<void>;
   close: () => Promise<void>;
   added: boolean;
-  notificationDetails: FrameNotificationDetails | null;
+  notificationDetails: MiniAppNotificationDetails | null;
   lastEvent: string;
   addFrame: () => Promise<void>;
   addFrameResult: string;
 }
 
-const FrameContext = React.createContext<FrameContextType | undefined>(
+const MiniAppContext = React.createContext<FrameContextType | undefined>(
   undefined
 );
 
-export function useFrame() {
+export function useMiniApp() {
   const [isSDKLoaded, setIsSDKLoaded] = useState(false);
-  const [context, setContext] = useState<Context.FrameContext>();
+  const [context, setContext] = useState<Context.MiniAppContext>();
   const [added, setAdded] = useState(false);
   const [notificationDetails, setNotificationDetails] =
-    useState<FrameNotificationDetails | null>(null);
+    useState<MiniAppNotificationDetails | null>(null);
   const [lastEvent, setLastEvent] = useState("");
   const [addFrameResult, setAddFrameResult] = useState("");
 
@@ -104,7 +104,7 @@ export function useFrame() {
       );
 
       // Set up event listeners
-      sdk.on("frameAdded", ({ notificationDetails }) => {
+      sdk.on("miniAppAdded", ({ notificationDetails }) => {
         console.log("Frame added", notificationDetails);
         setAdded(true);
         setNotificationDetails(notificationDetails ?? null);
@@ -112,14 +112,14 @@ export function useFrame() {
         logEvent("Frame Added", amplitudeBaseEvent, amplitudeUserId);
       });
 
-      sdk.on("frameAddRejected", ({ reason }) => {
+      sdk.on("miniAppAddRejected", ({ reason }) => {
         console.log("Frame add rejected", reason);
         setAdded(false);
         setLastEvent(`Frame add rejected: ${reason}`);
         logEvent("Frame Add Rejected", amplitudeBaseEvent, amplitudeUserId);
       });
 
-      sdk.on("frameRemoved", () => {
+      sdk.on("miniAppRemoved", () => {
         console.log("Frame removed");
         setAdded(false);
         setLastEvent("Frame removed");
@@ -176,15 +176,15 @@ export function useFrame() {
 }
 
 export function FrameProvider({ children }: { children: React.ReactNode }) {
-  const frameContext = useFrame();
+  const frameContext = useMiniApp();
 
   if (!frameContext.isSDKLoaded) {
     return <div>Loading...</div>;
   }
 
   return (
-    <FrameContext.Provider value={frameContext}>
+    <MiniAppContext.Provider value={frameContext}>
       {children}
-    </FrameContext.Provider>
+    </MiniAppContext.Provider>
   );
 }

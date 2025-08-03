@@ -1,8 +1,8 @@
 import { createConfig, http, WagmiProvider } from "wagmi";
 import { base, degen, mainnet, optimism, unichain } from "wagmi/chains";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { farcasterFrame } from "@farcaster/frame-wagmi-connector";
-import { coinbaseWallet, metaMask } from 'wagmi/connectors';
+import { farcasterMiniApp } from "@farcaster/miniapp-wagmi-connector";
+import { coinbaseWallet, metaMask } from "wagmi/connectors";
 import { APP_NAME, APP_ICON_URL, APP_URL } from "~/lib/constants";
 import { useEffect, useState } from "react";
 import { useConnect, useAccount } from "wagmi";
@@ -17,17 +17,18 @@ function useCoinbaseWalletAutoConnect() {
   useEffect(() => {
     // Check if we're running in Coinbase Wallet
     const checkCoinbaseWallet = () => {
-      const isInCoinbaseWallet = window.ethereum?.isCoinbaseWallet || 
+      const isInCoinbaseWallet =
+        window.ethereum?.isCoinbaseWallet ||
         window.ethereum?.isCoinbaseWalletExtension ||
         window.ethereum?.isCoinbaseWalletBrowser;
       setIsCoinbaseWallet(!!isInCoinbaseWallet);
     };
-    
+
     checkCoinbaseWallet();
-    window.addEventListener('ethereum#initialized', checkCoinbaseWallet);
-    
+    window.addEventListener("ethereum#initialized", checkCoinbaseWallet);
+
     return () => {
-      window.removeEventListener('ethereum#initialized', checkCoinbaseWallet);
+      window.removeEventListener("ethereum#initialized", checkCoinbaseWallet);
     };
   }, []);
 
@@ -51,11 +52,11 @@ export const config = createConfig({
     [unichain.id]: http(),
   },
   connectors: [
-    farcasterFrame(),
+    farcasterMiniApp(),
     coinbaseWallet({
       appName: APP_NAME,
       appLogoUrl: APP_ICON_URL,
-      preference: 'all',
+      preference: "all",
     }),
     metaMask({
       dappMetadata: {
@@ -69,7 +70,11 @@ export const config = createConfig({
 const queryClient = new QueryClient();
 
 // Wrapper component that provides Coinbase Wallet auto-connection
-function CoinbaseWalletAutoConnect({ children }: { children: React.ReactNode }) {
+function CoinbaseWalletAutoConnect({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   useCoinbaseWalletAutoConnect();
   return <>{children}</>;
 }
@@ -78,9 +83,7 @@ export default function Provider({ children }: { children: React.ReactNode }) {
   return (
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
-        <CoinbaseWalletAutoConnect>
-          {children}
-        </CoinbaseWalletAutoConnect>
+        <CoinbaseWalletAutoConnect>{children}</CoinbaseWalletAutoConnect>
       </QueryClientProvider>
     </WagmiProvider>
   );

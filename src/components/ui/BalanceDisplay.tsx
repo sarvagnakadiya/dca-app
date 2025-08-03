@@ -1,13 +1,13 @@
 import React from "react";
 import Image from "next/image";
 import { useAccount, useBalance, useReadContract } from "wagmi";
-import { useFrame } from "~/components/providers/FrameProvider";
+import { useMiniApp } from "~/components/providers/FrameProvider";
 import { USDC_ABI } from "~/lib/contracts/abi";
 
 const USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_ADDRESS as `0x${string}`;
 
-const DCA_EXECUTOR_ADDRESS = process.env.NEXT_PUBLIC_DCA_EXECUTOR_ADDRESS as `0x${string}`;
-
+const DCA_EXECUTOR_ADDRESS = process.env
+  .NEXT_PUBLIC_DCA_EXECUTOR_ADDRESS as `0x${string}`;
 
 interface BalanceDisplayProps {
   className?: string;
@@ -17,7 +17,7 @@ export const BalanceDisplay: React.FC<BalanceDisplayProps> = ({
   className = "",
 }) => {
   const { address } = useAccount();
-  const { context } = useFrame();
+  const { context } = useMiniApp();
 
   // Fetch USDC balance
   const { data: balanceData, isLoading: balanceLoading } = useBalance({
@@ -82,7 +82,7 @@ export const BalanceDisplay: React.FC<BalanceDisplayProps> = ({
           className="w-8 h-8 rounded-full object-cover border-2 border-gray-700"
         />
       ) : (
-        <span className="w-8 h-8 rounded-full bg-gradient-to-r from-pink-400 to-purple-500 flex items-center justify-center text-lg">
+        <span className="w-8 h-8 rounded-full bg-gradient-to-r from-pink-400 to-orange-500 flex items-center justify-center text-lg">
           🐷
         </span>
       )}

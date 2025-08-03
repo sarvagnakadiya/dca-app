@@ -87,10 +87,38 @@ export async function POST(req: Request) {
     });
 
     if (existingPlan) {
+      // If plan exists but is inactive, reactivate it
+      if (!existingPlan.active) {
+        const reactivatedPlan = await prisma.dCAPlan.update({
+          where: { planHash },
+          data: {
+            active: true,
+            amountIn,
+            frequency,
+            lastExecutedAt: 0, // Reset execution time for new investment
+            createdAt: new Date(), // Reset creation time for reactivated plan
+          },
+          include: {
+            user: true,
+            tokenOut: true,
+          },
+        });
+
+        return NextResponse.json(
+          {
+            success: true,
+            data: reactivatedPlan,
+            message: "Plan reactivated successfully",
+          },
+          { status: 200 }
+        );
+      }
+
+      // If plan exists and is active, return error
       return NextResponse.json(
         {
           success: false,
-          error: "Plan already exists with this hash",
+          error: "Plan already exists and is active",
         },
         { status: 409 }
       );
