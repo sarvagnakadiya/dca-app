@@ -1,57 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "~/lib/prisma";
-import axios from "axios";
-import { Decimal } from "@prisma/client/runtime/library";
-
-// TypeScript interfaces for database models
-interface DCAExecution {
-  txHash: string;
-  planHash: string;
-  amountIn: Decimal;
-  tokenOutAddress: string;
-  amountOut: Decimal;
-  feeAmount: Decimal;
-  executedAt: Date;
-}
-
-interface DCAPlan {
-  planHash: string;
-  userWallet: string;
-  tokenOutAddress: string;
-  recipient: string;
-  amountIn: Decimal;
-  frequency: number;
-  lastExecutedAt: number;
-  active: boolean;
-  createdAt: Date;
-  executions: DCAExecution[];
-}
-
-interface Token {
-  address: string;
-  symbol: string;
-  name: string;
-  decimals: Decimal;
-  about?: string | null;
-  image?: string | null;
-  isWrapped: boolean;
-  wrappedName?: string | null;
-  wrappedSymbol?: string | null;
-  originalAddress?: string | null;
-}
-
-interface GeckoTerminalData {
-  name: string;
-  symbol: string;
-  decimals: number;
-  image_url: string;
-  coingecko_coin_id: string;
-  normalized_total_supply: string;
-  price_usd: string;
-  fdv_usd: string;
-  total_reserve_in_usd: string;
-  volume_usd: string;
-}
+import { DCAExecution, DCAPlan, Token } from "~/lib/types";
 
 export async function GET(
   req: Request,
@@ -67,7 +16,7 @@ export async function GET(
     });
 
     // Find the token in our database
-    const token = await prisma.token.findUnique({
+    const token: Token | null = await prisma.token.findUnique({
       where: { address: normalizedAddress },
     });
 
@@ -99,22 +48,24 @@ export async function GET(
     console.log("User plans:", userPlans);
     console.log("--------------------------------");
 
-    // Fetch data from GeckoTerminal API first
-    let geckoData: GeckoTerminalData | null = null;
-    let currentPrice = 0;
+    // Get current price and metrics from token model
+    console.log(`Raw token data for ${token.symbol}:`, {
+      price: token.price,
+      priceType: typeof token.price,
+      marketcap: token.marketcap,
+      volume24h: token.volume24h,
+    });
 
-    try {
-      const response = await axios.get(
-        `https://api.geckoterminal.com/api/v2/networks/base/tokens/${normalizedAddress}`
-      );
-      geckoData = response.data.data.attributes;
-      currentPrice = parseFloat(geckoData!.price_usd) || 0;
-    } catch (error) {
-      console.error(
-        `Failed to fetch GeckoTerminal data for token ${normalizedAddress}:`,
-        error
-      );
-    }
+    // Convert Decimal types to numbers properly
+    const currentPrice = token.price ? Number(token.price.toString()) : 0;
+    const fdvUsd = token.fdv ? Number(token.fdv.toString()) : 0;
+    const marketCapUsd = token.marketcap
+      ? Number(token.marketcap.toString())
+      : 0;
+    const volume24h = token.volume24h ? Number(token.volume24h.toString()) : 0;
+    const totalSupply = token.totalSupply
+      ? Number(token.totalSupply.toString())
+      : 0;
 
     // Calculate investment metrics
     let totalInvestedValue = 0;
@@ -138,88 +89,44 @@ export async function GET(
           0
         );
 
-        // Use current price if available, otherwise fallback to last execution price
-        if (currentPrice > 0) {
-          // Calculate current value (sum of all tokenOutAmount * current price)
-          const totalTokenAmount = allExecutions.reduce(
-            (sum: number, execution: DCAExecution) => {
-              return (
-                sum +
-                Number(execution.amountOut) /
-                  Math.pow(10, Number(token.decimals))
-              );
-            },
-            0
-          );
+        // Calculate current value (sum of all tokenOutAmount * current price)
+        const totalTokenAmount = allExecutions.reduce(
+          (sum: number, execution: DCAExecution) => {
+            return (
+              sum +
+              Number(execution.amountOut) / Math.pow(10, Number(token.decimals))
+            );
+          },
+          0
+        );
 
-          currentValue = totalTokenAmount * currentPrice;
+        currentValue = totalTokenAmount * currentPrice;
 
-          // Calculate percent change
-          if (totalInvestedValue > 0) {
-            percentChange =
-              ((currentValue - totalInvestedValue) / totalInvestedValue) * 100;
-          }
-        } else {
-          // Fallback to last execution price - note: we don't have priceAtTx in new schema
-          // We'll use current price as 0 in this case
-          const totalTokenAmount = allExecutions.reduce(
-            (sum: number, execution: DCAExecution) => {
-              return (
-                sum +
-                Number(execution.amountOut) /
-                  Math.pow(10, Number(token.decimals))
-              );
-            },
-            0
-          );
-          currentValue = totalTokenAmount * currentPrice;
-          if (totalInvestedValue > 0) {
-            percentChange =
-              ((currentValue - totalInvestedValue) / totalInvestedValue) * 100;
-          }
+        // Calculate percent change
+        if (totalInvestedValue > 0) {
+          percentChange =
+            ((currentValue - totalInvestedValue) / totalInvestedValue) * 100;
         }
       }
     }
 
-    // Return response with or without Gecko data
-    if (geckoData !== null && geckoData !== undefined) {
-      return NextResponse.json({
-        success: true,
-        data: {
-          ...token,
-          cg_name: geckoData.name,
-          cg_symbol: geckoData.symbol,
-          decimals: geckoData.decimals,
-          image_url: geckoData.image_url,
-          coingecko_coin_id: geckoData.coingecko_coin_id,
-          normalized_total_supply: geckoData.normalized_total_supply,
-          price_usd: geckoData.price_usd,
-          fdv_usd: geckoData.fdv_usd,
-          total_reserve_in_usd: geckoData.total_reserve_in_usd,
-          volume_usd: geckoData.volume_usd,
-          hasActivePlan: userPlans.length > 0,
-          plansOut: userPlans,
-          totalInvestedValue,
-          currentValue,
-          percentChange,
-          currentPrice,
-        },
-      });
-    } else {
-      // Return token without Gecko data
-      return NextResponse.json({
-        success: true,
-        data: {
-          ...token,
-          hasActivePlan: userPlans.length > 0,
-          plansOut: userPlans,
-          totalInvestedValue,
-          currentValue,
-          percentChange,
-          currentPrice,
-        },
-      });
-    }
+    // Return response with token model data
+    return NextResponse.json({
+      success: true,
+      data: {
+        ...token,
+        totalInvestedValue,
+        currentValue,
+        percentChange,
+        currentPrice,
+        fdvUsd,
+        marketCapUsd,
+        volume24h,
+        totalSupply,
+        hasActivePlan: userPlans.length > 0,
+        plansOut: userPlans,
+      },
+    });
   } catch (error: Error | unknown) {
     const errorMessage =
       error instanceof Error ? error.message : "An unknown error occurred";

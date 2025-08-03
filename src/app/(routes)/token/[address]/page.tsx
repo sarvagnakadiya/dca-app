@@ -18,8 +18,8 @@ interface TokenStats {
   percentChange: number;
   marketCap: number;
   fdv: number;
-  circSupply: number;
   totalSupply: number;
+  volume24h: number;
 }
 
 interface Token {
@@ -31,7 +31,7 @@ interface Token {
   stats: TokenStats;
   about: string;
   hasActivePlan: boolean;
-  feeTier: number;
+  volume24h: number;
 }
 
 interface Plan {
@@ -52,35 +52,30 @@ interface Plan {
 interface TokenApiResponse {
   success: boolean;
   data: {
-    id: string;
     address: string;
     symbol: string;
     name: string;
-    image: string;
+    decimals: string;
+    about?: string | null;
+    image?: string | null;
     isWrapped: boolean;
-    wrappedName: string | null;
-    wrappedSymbol: string | null;
-    originalAddress: string | null;
-    feeTier: number;
-    plansOut: Array<Plan>;
-    cg_name: string;
-    cg_symbol: string;
-    decimals: number;
-    image_url: string;
-    coingecko_coin_id: string;
-    normalized_total_supply: string;
-    price_usd: string;
-    fdv_usd: string;
-    total_reserve_in_usd: string;
-    volume_usd: {
-      h24: string;
-    };
+    wrappedName?: string | null;
+    wrappedSymbol?: string | null;
+    originalAddress?: string | null;
+    price?: string | null;
+    fdv?: string | null;
+    marketcap?: string | null;
+    price1yAgo?: string | null;
     hasActivePlan: boolean;
-    about?: string;
+    plansOut: Array<Plan>;
     totalInvestedValue: number;
     currentValue: number;
     percentChange: number;
-    currentPrice: number;
+    currentPrice?: number;
+    fdvUsd?: number;
+    marketCapUsd?: number;
+    volume24h?: number;
+    totalSupply?: number;
   };
 }
 
@@ -121,16 +116,13 @@ const TokenPage = () => {
       percentChange: 0,
       marketCap: 0,
       fdv: 0,
-      circSupply: 0,
       totalSupply: 0,
+      volume24h: 0,
     },
     about: "",
     hasActivePlan: false,
-    feeTier: 3000,
+    volume24h: 0,
   });
-
-  const [isButtonDocked, setIsButtonDocked] = useState(false);
-  const buttonDockRef = useRef<HTMLDivElement>(null);
 
   // Contract interaction for canceling plan
   const { writeContractAsync: cancelPlan, isPending: isCancelling } =
@@ -208,10 +200,12 @@ const TokenPage = () => {
   };
 
   const formatNumber = (num: number): string => {
+    if (num >= 1_000_000_000_000)
+      return (num / 1_000_000_000_000).toFixed(2) + "T";
     if (num >= 1_000_000_000) return (num / 1_000_000_000).toFixed(2) + "B";
     if (num >= 1_000_000) return (num / 1_000_000).toFixed(2) + "M";
     if (num >= 1_000) return (num / 1_000).toFixed(2) + "K";
-    return num.toString(); // for peasants with <1k
+    return num.toLocaleString(); // for numbers <1k, use locale formatting
   };
 
   // Map periods to GeckoTerminal resolution parameters
@@ -245,28 +239,32 @@ const TokenPage = () => {
             console.log("hasActivePlan:", tokenData.hasActivePlan);
             console.log("plansOut:", tokenData.plansOut);
             console.log("plansOut length:", tokenData.plansOut?.length);
+            console.log("Investment data:", {
+              totalInvestedValue: tokenData.totalInvestedValue,
+              currentValue: tokenData.currentValue,
+              percentChange: tokenData.percentChange,
+            });
             setToken({
               name: tokenData.name,
-              icon: tokenData.image_url || "₿", // Fallback to Bitcoin symbol if no image
-              price: parseFloat(tokenData.price_usd) || 0,
+              icon: tokenData.image || "₿", // Fallback to Bitcoin symbol if no image
+              price: parseFloat(tokenData.price || "0") || 0,
               symbol: tokenData.symbol,
-              decimals: tokenData.decimals,
+              decimals: parseInt(tokenData.decimals) || 18,
               stats: {
-                oneYearAgo: 0, // This data is not available in the API response
+                oneYearAgo: parseFloat(tokenData.price1yAgo || "0") || 0,
                 invested: tokenData.totalInvestedValue || 0,
                 currentValue: tokenData.currentValue || 0,
                 percentChange: tokenData.percentChange || 0,
-                marketCap: parseFloat(tokenData.total_reserve_in_usd) || 0,
-                fdv: parseFloat(tokenData.fdv_usd) || 0,
-                circSupply: parseFloat(tokenData.normalized_total_supply) || 0,
-                totalSupply: parseFloat(tokenData.normalized_total_supply) || 0,
+                marketCap: tokenData.marketCapUsd || 0,
+                fdv: tokenData.fdvUsd || 0,
+                totalSupply: tokenData.totalSupply || 0,
+                volume24h: tokenData.volume24h || 0,
               },
-              // about: `Information about ${tokenData.name} (${tokenData.symbol}) token.`,
               about:
                 tokenData?.about ||
                 `Information about ${tokenData.name} (${tokenData.symbol}) token.`,
               hasActivePlan: tokenData.hasActivePlan,
-              feeTier: tokenData.feeTier,
+              volume24h: tokenData.volume24h || 0,
             });
             // Set active plan if exists
             if (tokenData.plansOut && tokenData.plansOut.length > 0) {
@@ -383,7 +381,7 @@ const TokenPage = () => {
       {/* Stats Section */}
       <div className="bg-[#131313] rounded-xl p-6 mb-6">
         <div className="text-lg font-medium mb-4">Stats</div>
-        {token.hasActivePlan && token.stats.invested > 0 ? (
+        {token.stats.invested > 0 ? (
           <div className="bg-[#1E1E1F] rounded-lg p-4 mb-4">
             <div className="flex justify-between items-center mb-2">
               <div>
@@ -418,7 +416,16 @@ const TokenPage = () => {
               </div>
             </div>
           </div>
-        ) : null}
+        ) : (
+          <div className="bg-[#1E1E1F] rounded-lg p-4 mb-4">
+            <div className="text-center">
+              <div className="text-gray-400 text-sm mb-1">
+                No investment yet
+              </div>
+              <div className="text-white text-lg">Start your DCA journey</div>
+            </div>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div className="flex flex-col">
             <span className="text-white">Market cap</span>
@@ -433,9 +440,9 @@ const TokenPage = () => {
             </span>
           </div>
           <div className="flex flex-col">
-            <span className="text-white">Circulating supply</span>
+            <span className="text-white">24h volume</span>
             <span className="text-white font-medium">
-              {formatNumber(token.stats.circSupply)}
+              ${formatNumber(token.stats.volume24h)}
             </span>
           </div>
           <div className="flex flex-col">
@@ -630,7 +637,6 @@ const TokenPage = () => {
         }}
         tokenOut={tokenAddress as `0x${string}`}
         fid={context?.user?.fid}
-        feeTier={token.feeTier}
       />
       <TokenApprovalPopup
         open={showTokenApproval}
@@ -669,7 +675,6 @@ const TokenPage = () => {
         }}
         tokenOut={tokenAddress as `0x${string}`}
         fid={context?.user?.fid}
-        feeTier={token.feeTier}
         // Pass initial values for edit mode
         initialAmount={
           activePlan ? Number(activePlan.amountIn) / 1_000_000 : 10

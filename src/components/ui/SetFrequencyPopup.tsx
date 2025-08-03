@@ -21,7 +21,6 @@ interface SetFrequencyPopupProps {
   onConfirm: (amount: number, frequency: string, planHash?: string) => void;
   tokenOut: `0x${string}`;
   fid?: number;
-  feeTier: number;
   initialAmount?: number;
   initialFrequency?: string;
   editMode?: boolean;
@@ -42,7 +41,6 @@ export const SetFrequencyPopup: React.FC<SetFrequencyPopupProps> = ({
   onConfirm,
   tokenOut,
   fid,
-  feeTier,
   initialAmount = 10,
   initialFrequency = "Daily",
   editMode = false,
@@ -169,7 +167,6 @@ export const SetFrequencyPopup: React.FC<SetFrequencyPopupProps> = ({
       console.log("USDC_ADDRESS", USDC_ADDRESS);
       console.log("tokenOut", tokenOut);
       console.log("address", address);
-      console.log("feeTier:", feeTier);
 
       const hash = await createPlan({
         address: DCA_EXECUTOR_ADDRESS as `0x${string}`,

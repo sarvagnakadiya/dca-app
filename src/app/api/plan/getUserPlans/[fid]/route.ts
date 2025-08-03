@@ -1,31 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "~/lib/prisma";
-import axios from "axios";
-import { Decimal } from "@prisma/client/runtime/library";
-
-// TypeScript interfaces for database models
-interface DCAExecution {
-  txHash: string;
-  planHash: string;
-  amountIn: Decimal;
-  tokenOutAddress: string;
-  amountOut: Decimal;
-  feeAmount: Decimal;
-  executedAt: Date;
-}
-
-interface Token {
-  address: string;
-  symbol: string;
-  name: string;
-  decimals: Decimal;
-  about?: string | null;
-  image?: string | null;
-  isWrapped: boolean;
-  wrappedName?: string | null;
-  wrappedSymbol?: string | null;
-  originalAddress?: string | null;
-}
+import { DCAExecution, Token } from "~/lib/types";
 
 export async function GET(
   req: Request,
@@ -57,7 +32,7 @@ export async function GET(
     }
 
     // Get all tokens
-    const tokens = await prisma.token.findMany();
+    const tokens: Token[] = await prisma.token.findMany();
     console.log("Total tokens found:", tokens.length);
 
     if (tokens.length === 0) {
@@ -74,7 +49,7 @@ export async function GET(
     }
 
     // Filter out USDC token
-    const filteredTokens = tokens.filter(
+    const filteredTokens: Token[] = tokens.filter(
       (token) =>
         token.address.toLowerCase() !==
         (process.env.NEXT_PUBLIC_USDC_ADDRESS as `0x${string}`).toLowerCase()
@@ -120,8 +95,10 @@ export async function GET(
     }
 
     userPlans.forEach((plan) => {
-      // Mark the token being sold/spent (tokenOut) as having an active plan
-      tokenPlanMap.set(plan.tokenOut.address, true);
+      // Only mark tokens with active plans
+      if (plan.active) {
+        tokenPlanMap.set(plan.tokenOut.address, true);
+      }
 
       // Store the earliest createdAt for this token (in case of multiple plans)
       const tokenAddress = plan.tokenOut.address;
@@ -139,119 +116,108 @@ export async function GET(
       tokenExecutionMap.get(tokenAddress).push(...plan.executions);
     });
 
-    // Fetch current prices and calculate values for tokens with active plans
-    const tokensWithUserData = await Promise.all(
-      filteredTokens.map(async (token) => {
-        const executions = tokenExecutionMap.get(token.address) || [];
-        let totalInvestedValue = 0;
-        let currentValue = 0;
-        let percentChange = 0;
-        let currentPrice = 0;
+    // Process tokens with user data using token model fields
+    const tokensWithUserData = filteredTokens.map((token) => {
+      const executions = tokenExecutionMap.get(token.address) || [];
+      let totalInvestedValue = 0;
+      let currentValue = 0;
+      let percentChange = 0;
 
-        // Get current token price and additional metrics for all tokens
-        let fdvUsd = 0;
-        let totalReserveInUsd = 0;
-        let volume24h = 0;
-        let marketCapUsd = 0;
+      // Get current token price and metrics from token model
+      console.log(`Raw token data for ${token.symbol}:`, {
+        price: token.price,
+        priceType: typeof token.price,
+        fdv: token.fdv,
+        marketcap: token.marketcap,
+        volume24h: token.volume24h,
+      });
 
-        try {
-          const response = await axios.get(
-            `https://api.geckoterminal.com/api/v2/networks/base/tokens/${token.address}`,
-            { timeout: 5000 } // Add timeout to prevent hanging requests
-          );
+      // Try different conversion methods for Decimal types
+      const currentPrice = token.price ? parseFloat(token.price.toString()) : 0;
+      const fdvUsd = token.fdv ? parseFloat(token.fdv.toString()) : 0;
+      const marketCapUsd = token.marketcap
+        ? parseFloat(token.marketcap.toString())
+        : 0;
+      const volume24h = token.volume24h
+        ? parseFloat(token.volume24h.toString())
+        : 0;
 
-          if (response.data?.data?.attributes) {
-            const attributes = response.data.data.attributes;
-            currentPrice = parseFloat(attributes.price_usd) || 0;
-            fdvUsd = parseFloat(attributes.fdv_usd) || 0;
-            totalReserveInUsd =
-              parseFloat(attributes.total_reserve_in_usd) || 0;
-            volume24h = parseFloat(attributes.volume_usd?.h24) || 0;
-            marketCapUsd = parseFloat(attributes.market_cap_usd) || 0;
+      console.log(
+        `Converted metrics for ${token.symbol}: Price: $${currentPrice}, FDV: $${fdvUsd}, Volume: $${volume24h}`
+      );
 
-            console.log(
-              `Metrics for ${token.symbol}: Price: $${currentPrice}, FDV: $${fdvUsd}, Volume: $${volume24h}`
+      // Calculate investment metrics only if there are executions
+      if (executions.length > 0) {
+        // Calculate total invested value (sum of all amountIn minus fees in USDC)
+        totalInvestedValue = executions.reduce(
+          (sum: number, execution: DCAExecution) => {
+            const amountIn = Number(execution.amountIn) / 1_000_000; // Convert from USDC decimals (6)
+            const feeAmount = Number(execution.feeAmount) / 1_000_000; // Convert from USDC decimals (6)
+            return sum + (amountIn - feeAmount); // Subtract fees from investment amount
+          },
+          0
+        );
+
+        // Calculate current value (sum of all tokenOutAmount * current price)
+        const totalTokenAmount = executions.reduce(
+          (sum: number, execution: DCAExecution) => {
+            return (
+              sum +
+              Number(execution.amountOut) /
+                Math.pow(10, Number(token.decimals.toString()))
             );
-          } else {
-            console.log(`No data for ${token.symbol}`);
-            currentPrice = 0;
-          }
-        } catch (error) {
-          console.error(
-            `Failed to fetch data for token ${token.address} (${token.symbol}):`,
-            error
-          );
-          currentPrice = 0;
+          },
+          0
+        );
+
+        currentValue = totalTokenAmount * currentPrice;
+
+        // Calculate percent change
+        if (totalInvestedValue > 0) {
+          percentChange =
+            ((currentValue - totalInvestedValue) / totalInvestedValue) * 100;
         }
+      }
 
-        // Calculate investment metrics only if there are executions
-        if (executions.length > 0) {
-          // Calculate total invested value (sum of all amountIn minus fees in USDC)
-          totalInvestedValue = executions.reduce(
-            (sum: number, execution: DCAExecution) => {
-              const amountIn = Number(execution.amountIn) / 1_000_000; // Convert from USDC decimals (6)
-              const feeAmount = Number(execution.feeAmount) / 1_000_000; // Convert from USDC decimals (6)
-              return sum + (amountIn - feeAmount); // Subtract fees from investment amount
-            },
-            0
-          );
+      return {
+        id: token.address, // Add id field that Home component expects
+        address: token.address,
+        symbol: token.symbol,
+        name: token.name,
+        about: token.about,
+        decimals: token.decimals.toString(), // Convert Decimal to string
+        image: token.image,
+        isWrapped: token.isWrapped,
+        wrappedName: token.wrappedName,
+        wrappedSymbol: token.wrappedSymbol,
+        originalAddress: token.originalAddress,
+        hasActivePlan: tokenPlanMap.has(token.address),
+        planCreatedAt:
+          tokenPlanCreatedAtMap.get(token.address)?.toISOString() || null,
+        totalInvestedValue,
+        currentValue,
+        percentChange,
+        currentPrice,
+        fdvUsd,
+        volume24h,
+        marketCapUsd,
+      };
+    });
 
-          // Calculate current value (sum of all tokenOutAmount * current price)
-          const totalTokenAmount = executions.reduce(
-            (sum: number, execution: DCAExecution) => {
-              return (
-                sum +
-                Number(execution.amountOut) /
-                  Math.pow(10, Number(token.decimals.toString()))
-              );
-            },
-            0
-          );
-
-          currentValue = totalTokenAmount * currentPrice;
-
-          // Calculate percent change
-          if (totalInvestedValue > 0) {
-            percentChange =
-              ((currentValue - totalInvestedValue) / totalInvestedValue) * 100;
-          }
-        }
-
-        return {
-          id: token.address, // Add id field that Home component expects
-          address: token.address,
-          symbol: token.symbol,
-          name: token.name,
-          about: token.about,
-          decimals: token.decimals.toString(), // Convert Decimal to string
-          image: token.image,
-          isWrapped: token.isWrapped,
-          wrappedName: token.wrappedName,
-          wrappedSymbol: token.wrappedSymbol,
-          originalAddress: token.originalAddress,
-          feeTier: 0, // Add default feeTier
-          hasActivePlan: tokenPlanMap.has(token.address) || false,
-          planCreatedAt:
-            tokenPlanCreatedAtMap.get(token.address)?.toISOString() || null,
-          totalInvestedValue,
-          currentValue,
-          percentChange,
-          currentPrice,
-          fdvUsd,
-          totalReserveInUsd,
-          volume24h,
-          marketCapUsd,
-        };
-      })
-    );
+    // Sort tokens by 24h volume in descending order
+    const sortedTokensWithUserData = tokensWithUserData.sort((a, b) => {
+      const volumeA = a.volume24h || 0;
+      const volumeB = b.volume24h || 0;
+      return volumeB - volumeA; // Descending order
+    });
 
     // Calculate portfolio-level metrics
-    const portfolioCurrentValue = tokensWithUserData.reduce(
+    const portfolioCurrentValue = sortedTokensWithUserData.reduce(
       (sum, token) => sum + (token.currentValue || 0),
       0
     );
 
-    const portfolioInvestedAmount = tokensWithUserData.reduce(
+    const portfolioInvestedAmount = sortedTokensWithUserData.reduce(
       (sum, token) => sum + (token.totalInvestedValue || 0),
       0
     );
@@ -272,7 +238,7 @@ export async function GET(
 
     console.log(
       "Final response - tokens with user data:",
-      tokensWithUserData.length
+      sortedTokensWithUserData.length
     );
     console.log("Portfolio metrics:", {
       portfolioCurrentValue,
@@ -283,7 +249,7 @@ export async function GET(
     // Validate response structure
     const response = {
       success: true,
-      data: tokensWithUserData,
+      data: sortedTokensWithUserData,
       portfolio: {
         portfolioCurrentValue,
         portfolioInvestedAmount,

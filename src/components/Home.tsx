@@ -14,20 +14,18 @@ interface Token {
   name: string;
   about: string | null;
   decimals: string;
-  image: string;
+  image: string | null;
   isWrapped: boolean;
-  wrappedName: string;
-  wrappedSymbol: string;
+  wrappedName: string | null;
+  wrappedSymbol: string | null;
   originalAddress: string | null;
-  feeTier: number;
   hasActivePlan: boolean;
-  planCreatedAt: string;
+  planCreatedAt: string | null;
   totalInvestedValue: number;
   currentValue: number;
   percentChange: number;
   currentPrice: number;
   fdvUsd: number;
-  totalReserveInUsd: number;
   volume24h: number;
   marketCapUsd: number;
 }

@@ -15,7 +15,7 @@ model User {
 }
 
 model Token {
-  address         String         @id
+  address         String  @id
   symbol          String
   name            String
   decimals        Decimal
@@ -25,8 +25,16 @@ model Token {
   wrappedName     String?
   wrappedSymbol   String?
   originalAddress String?
-  plansOut        DCAPlan[]      @relation("TokenOut")
-  executions      DCAExecution[]
+
+  price       Decimal?
+  fdv         Decimal?
+  marketcap   Decimal?
+  volume24h   Decimal?
+  price1yAgo  Decimal?
+  totalSupply Decimal?
+
+  plansOut   DCAPlan[]      @relation("TokenOut")
+  executions DCAExecution[]
 }
 
 model DCAPlan {
